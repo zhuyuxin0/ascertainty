@@ -11,7 +11,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from backend import db, og_chain, publisher, watcher
+from backend import claim_task, db, og_chain, publisher, watcher
 from backend.attestation import build_attestation, sign_attestation
 from backend.og_compute import explain_verification
 from backend.og_storage import upload_attestation
@@ -33,6 +33,7 @@ async def lifespan(app: FastAPI):
     await db.init_db()
     if og_chain.is_configured():
         _tasks.append(asyncio.create_task(watcher.watcher_task(), name="watcher"))
+        _tasks.append(asyncio.create_task(claim_task.claim_task(), name="claim"))
     try:
         yield
     finally:
