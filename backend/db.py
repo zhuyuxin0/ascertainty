@@ -197,6 +197,46 @@ async def update_bounty_status(bounty_id: int, status: str) -> None:
         await db.commit()
 
 
+async def set_bounty_onchain(
+    bounty_id: int, *, onchain_bounty_id: int, tx_hash: str,
+) -> None:
+    async with _conn() as db:
+        await db.execute(
+            "UPDATE bounties SET onchain_bounty_id = ?, tx_hash = ? WHERE id = ?",
+            (onchain_bounty_id, tx_hash, bounty_id),
+        )
+        await db.commit()
+
+
+async def set_submission_onchain(submission_id: int, tx_hash: str) -> None:
+    async with _conn() as db:
+        await db.execute(
+            "UPDATE submissions SET onchain_tx_hash = ? WHERE id = ?",
+            (tx_hash, submission_id),
+        )
+        await db.commit()
+
+
+async def get_bounty_by_onchain_id(onchain_bounty_id: int) -> Optional[dict]:
+    async with _conn() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM bounties WHERE onchain_bounty_id = ?", (onchain_bounty_id,)
+        ) as cur:
+            row = await cur.fetchone()
+            return dict(row) if row else None
+
+
+async def get_bounty_by_spec_hash(spec_hash: str) -> Optional[dict]:
+    async with _conn() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM bounties WHERE spec_hash = ?", (spec_hash,)
+        ) as cur:
+            row = await cur.fetchone()
+            return dict(row) if row else None
+
+
 async def latest_bounties(limit: int = 50) -> list[dict]:
     async with _conn() as db:
         db.row_factory = aiosqlite.Row

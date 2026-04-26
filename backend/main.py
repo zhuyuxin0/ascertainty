@@ -10,7 +10,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from backend import db
+from backend import db, og_chain, publisher
 from backend.attestation import build_attestation, sign_attestation
 from backend.og_compute import explain_verification
 from backend.og_storage import upload_attestation
@@ -89,6 +89,26 @@ async def create_bounty(body: CreateBountyBody) -> dict[str, Any]:
     if bounty_id is None:
         raise HTTPException(status_code=409, detail="bounty with this spec_hash already exists")
 
+    onchain_field = None
+    if publisher.is_configured():
+        onchain = await publisher.create_bounty_onchain(
+            spec_hash=bytes.fromhex(h),
+            amount=spec.bounty_usdc,
+            deadline=spec.deadline_unix,
+            challenge_window=spec.challenge_window_seconds,
+        )
+        if onchain is not None:
+            await db.set_bounty_onchain(
+                bounty_id,
+                onchain_bounty_id=onchain.onchain_bounty_id,
+                tx_hash=onchain.tx_hash,
+            )
+            onchain_field = {
+                "onchain_bounty_id": onchain.onchain_bounty_id,
+                "tx_hash": onchain.tx_hash,
+                "block_number": onchain.block_number,
+            }
+
     return {
         "bounty_id": bounty_id,
         "spec_hash": h,
@@ -96,6 +116,7 @@ async def create_bounty(body: CreateBountyBody) -> dict[str, Any]:
         "bounty_usdc": spec.bounty_usdc,
         "deadline_unix": spec.deadline_unix,
         "challenge_window_seconds": spec.challenge_window_seconds,
+        "onchain": onchain_field,
     }
 
 
@@ -140,7 +161,7 @@ async def submit_proof(body: SubmitProofBody) -> dict[str, Any]:
 
     now = int(time.time())
     await db.upsert_solver(address=body.solver_address, ts=now)
-    await db.insert_submission(
+    submission_id = await db.insert_submission(
         bounty_id=body.bounty_id,
         solver_address=body.solver_address,
         attestation_hash=signed["attestation_hash"],
@@ -150,11 +171,26 @@ async def submit_proof(body: SubmitProofBody) -> dict[str, Any]:
     )
     await db.update_bounty_status(body.bounty_id, "submitted" if result.accepted else "open")
 
+    onchain_field = None
+    if result.accepted and bounty.get("onchain_bounty_id") and publisher.is_configured():
+        onchain = await publisher.submit_proof_onchain(
+            onchain_bounty_id=bounty["onchain_bounty_id"],
+            attestation_hash=bytes.fromhex(signed["attestation_hash"]),
+        )
+        if onchain is not None:
+            if submission_id is not None:
+                await db.set_submission_onchain(submission_id, onchain.tx_hash)
+            onchain_field = {
+                "tx_hash": onchain.tx_hash,
+                "block_number": onchain.block_number,
+            }
+
     return {
         "attestation": signed,
         "storage": storage_field,
         "explanation": explanation,
         "kernel_output": result.kernel_output,
+        "onchain": onchain_field,
     }
 
 
