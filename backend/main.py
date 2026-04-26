@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import time
@@ -10,7 +11,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from backend import db, og_chain, publisher
+from backend import db, og_chain, publisher, watcher
 from backend.attestation import build_attestation, sign_attestation
 from backend.og_compute import explain_verification
 from backend.og_storage import upload_attestation
@@ -24,11 +25,21 @@ logging.basicConfig(
 )
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
+_tasks: list[asyncio.Task] = []
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await db.init_db()
-    yield
+    if og_chain.is_configured():
+        _tasks.append(asyncio.create_task(watcher.watcher_task(), name="watcher"))
+    try:
+        yield
+    finally:
+        for t in _tasks:
+            t.cancel()
+        await asyncio.gather(*_tasks, return_exceptions=True)
+        _tasks.clear()
 
 
 app = FastAPI(title="Ascertainty", version="0.2.0", lifespan=lifespan)

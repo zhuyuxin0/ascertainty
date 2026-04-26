@@ -72,6 +72,11 @@ CREATE TABLE IF NOT EXISTS kh_executions (
 );
 CREATE INDEX IF NOT EXISTS idx_kh_exec_ts ON kh_executions(ts DESC);
 
+CREATE TABLE IF NOT EXISTS watcher_state (
+    key     TEXT PRIMARY KEY,
+    value   TEXT NOT NULL
+);
+
 -- Tables ported from Enstabler for the embedded flow-classifier subsystem
 CREATE TABLE IF NOT EXISTS flows (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -235,6 +240,27 @@ async def get_bounty_by_spec_hash(spec_hash: str) -> Optional[dict]:
         ) as cur:
             row = await cur.fetchone()
             return dict(row) if row else None
+
+
+# ---------- watcher state ----------
+
+async def get_watcher_state(key: str) -> Optional[str]:
+    async with _conn() as db:
+        async with db.execute(
+            "SELECT value FROM watcher_state WHERE key = ?", (key,)
+        ) as cur:
+            row = await cur.fetchone()
+            return row[0] if row else None
+
+
+async def set_watcher_state(key: str, value: str) -> None:
+    async with _conn() as db:
+        await db.execute(
+            "INSERT INTO watcher_state (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, value),
+        )
+        await db.commit()
 
 
 async def latest_bounties(limit: int = 50) -> list[dict]:
