@@ -123,6 +123,10 @@ async def _handle_bounty_created(ev) -> None:
     )
     log.info("watcher: BountyCreated materialized on-chain id=%s spec=%s...",
              onchain_id, spec_hash_hex[:12])
+    new_bounty = await db.get_bounty_by_onchain_id(onchain_id)
+    if new_bounty:
+        from backend import telegram_bot
+        await telegram_bot.broadcast_bounty_created(new_bounty)
 
 
 async def _handle_proof_submitted(ev) -> None:
@@ -159,3 +163,5 @@ async def _handle_bounty_claimed(ev) -> None:
     await db.increment_solver_reputation(args["solver"], delta=1)
     log.info("watcher: BountyClaimed on-chain id=%s solver=%s amount=%s",
              onchain_id, args["solver"], int(args["amount"]))
+    from backend import telegram_bot
+    await telegram_bot.broadcast_bounty_claimed(bounty, args["solver"], int(args["amount"]))

@@ -12,7 +12,16 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from backend import claim_task, db, keeperhub, og_chain, publisher, watcher
+from backend import (
+    cctp_watcher,
+    claim_task,
+    db,
+    keeperhub,
+    og_chain,
+    publisher,
+    telegram_bot,
+    watcher,
+)
 from backend.attestation import build_attestation, sign_attestation
 from backend.og_compute import explain_verification
 from backend.og_storage import upload_attestation
@@ -35,6 +44,10 @@ async def lifespan(app: FastAPI):
     if og_chain.is_configured():
         _tasks.append(asyncio.create_task(watcher.watcher_task(), name="watcher"))
         _tasks.append(asyncio.create_task(claim_task.claim_task(), name="claim"))
+    if os.getenv("TELEGRAM_BOT_TOKEN"):
+        _tasks.append(asyncio.create_task(telegram_bot.telegram_task(), name="telegram"))
+    if os.getenv("ALCHEMY_API_KEY") or os.getenv("ALCHEMY_WS_URL"):
+        _tasks.append(asyncio.create_task(cctp_watcher.cctp_task(), name="cctp"))
     try:
         yield
     finally:
