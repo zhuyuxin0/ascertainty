@@ -1,17 +1,11 @@
 """Ascertainty CLI.
 
-Usage:
-  python -m cli.ascertainty verify --spec PATH --proof PATH \\
-      [--no-upload] [--no-explain] [--out PATH]
-
-Loads a bounty spec, runs the (mock) Lean4 verifier on the proof,
-builds + signs an attestation with the operator's OG_PRIVATE_KEY, and
-prints the final JSON. Best-effort uploads the attestation to 0G Storage
-and best-effort attaches a TEE-verified explanation from 0G Compute,
-unless suppressed via flags.
+Subcommands:
+  verify     — run the mock Lean4 verifier on a proof against a spec
+  bootstrap  — one-time MockUSDC mint + BountyFactory approve for the operator wallet
 
 Exit codes:
-  0 — verification ran (regardless of accept/reject); attestation printed
+  0 — success
   1 — usage error / spec parse error / signing key missing
 """
 from __future__ import annotations
@@ -25,11 +19,17 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from backend import og_chain, publisher
 from backend.attestation import build_attestation, sign_attestation
 from backend.og_compute import explain_verification
 from backend.og_storage import upload_attestation
 from backend.spec import load_spec
 from backend.verifier import verify
+
+
+MAX_UINT256 = 2**256 - 1
+MIN_USDC_BALANCE = 1_000_000_000_000   # 1,000,000 USDC (6 decimals)
+MIN_APPROVAL = 2**255                  # any value above 2^255 is "effectively infinite"
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -48,6 +48,11 @@ def _build_parser() -> argparse.ArgumentParser:
                    help="skip 0G Compute explanation")
     v.add_argument("--out", type=Path, default=None,
                    help="write attestation JSON to PATH (default: stdout)")
+
+    sub.add_parser(
+        "bootstrap",
+        help="one-time setup: mint MockUSDC to operator + approve BountyFactory",
+    )
     return p
 
 
@@ -95,11 +100,57 @@ async def _run_verify(args: argparse.Namespace) -> int:
     return 0
 
 
+async def _run_bootstrap(args: argparse.Namespace) -> int:
+    load_dotenv()
+    if not og_chain.is_configured():
+        print("error: OG_PRIVATE_KEY missing or contract_addresses.json not found",
+              file=sys.stderr)
+        return 1
+
+    account = og_chain.get_account()
+    usdc = og_chain.get_usdc()
+    factory = og_chain.get_factory()
+
+    bal = await usdc.functions.balanceOf(account.address).call()
+    print(f"operator         : {account.address}")
+    print(f"MockUSDC@        : {usdc.address}")
+    print(f"BountyFactory@   : {factory.address}")
+    print(f"current balance  : {bal} ({bal / 1_000_000} USDC)")
+
+    if bal < MIN_USDC_BALANCE:
+        amount = MIN_USDC_BALANCE - bal
+        print(f"minting          : {amount} ({amount / 1_000_000} USDC)")
+        fn = usdc.functions.mint(account.address, amount)
+        tx_hash, block, _ = await publisher._send_tx(fn)
+        print(f"  mint tx        : {tx_hash} (block {block})")
+        bal = await usdc.functions.balanceOf(account.address).call()
+        print(f"new balance      : {bal} ({bal / 1_000_000} USDC)")
+    else:
+        print("balance OK, no mint needed")
+
+    allowance = await usdc.functions.allowance(account.address, factory.address).call()
+    print(f"current allowance: {allowance}")
+    if allowance < MIN_APPROVAL:
+        print(f"approving        : max_uint256 to BountyFactory")
+        fn = usdc.functions.approve(factory.address, MAX_UINT256)
+        tx_hash, block, _ = await publisher._send_tx(fn)
+        print(f"  approve tx     : {tx_hash} (block {block})")
+        allowance = await usdc.functions.allowance(account.address, factory.address).call()
+        print(f"new allowance    : {allowance}")
+    else:
+        print("allowance OK, no approval needed")
+
+    print("bootstrap complete")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
     if args.cmd == "verify":
         return asyncio.run(_run_verify(args))
+    if args.cmd == "bootstrap":
+        return asyncio.run(_run_bootstrap(args))
     parser.print_help()
     return 1
 
