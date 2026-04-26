@@ -1,0 +1,22 @@
+bounty_id: sort-correctness-001
+description: |
+  Prove that the merge-sort implementation in the reference module returns
+  a permutation of its input that is monotonically non-decreasing under the
+  provided ordering, for any input list.
+theorem_signature: |
+  ∀ {α : Type} [inst : LinearOrder α] (xs : List α),
+    let ys := mergeSort xs
+    (∀ i j, i < j → j < ys.length → ys.get ⟨i, by omega⟩ ≤ ys.get ⟨j, by omega⟩) ∧
+    ys.Perm xs
+mathlib_sha: 5b1c4e7
+lean_toolchain: "leanprover/lean4:v4.10.0"
+axiom_whitelist:
+  - propext
+  - Classical.choice
+  - Quot.sound
+bounty_usdc: 1000000000  # 1,000 USDC
+deadline_unix: 1756684800  # 2026-09-01
+challenge_window_seconds: 86400  # 24h
+tags:
+  - algorithms
+  - lists

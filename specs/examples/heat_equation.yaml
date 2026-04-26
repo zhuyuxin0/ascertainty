@@ -1,0 +1,25 @@
+bounty_id: heat-equation-pinn-convergence-001
+description: |
+  Prove that the physics-informed neural network (PINN) approximation
+  u_θ(x, t) for the 1D heat equation u_t = α·u_xx on [0, 1] × [0, T],
+  with initial condition u(x, 0) = sin(πx) and Dirichlet boundary
+  u(0, t) = u(1, t) = 0, achieves L²-error bounded by ε for any ε > 0
+  given a network of width >= W(ε) and training loss <= δ(ε).
+theorem_signature: |
+  ∀ (ε : ℝ) (hε : 0 < ε), ∃ (W : ℕ) (δ : ℝ),
+    0 < δ ∧
+    ∀ (θ : NN.Params) (h_train : NN.loss θ ≤ δ) (h_width : NN.width θ ≥ W),
+      ‖uExact - uApprox θ‖_L2 ≤ ε
+mathlib_sha: 5b1c4e7
+lean_toolchain: "leanprover/lean4:v4.10.0"
+axiom_whitelist:
+  - propext
+  - Classical.choice
+  - Quot.sound
+bounty_usdc: 2500000000  # 2,500 USDC
+deadline_unix: 1754006400  # 2026-08-01
+challenge_window_seconds: 259200  # 72h
+tags:
+  - pde
+  - ml
+  - convergence

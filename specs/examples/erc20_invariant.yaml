@@ -1,0 +1,28 @@
+bounty_id: erc20-transfer-invariant-001
+description: |
+  Prove that for any ERC-20 implementation conforming to the reference Solidity
+  signature, a successful transfer(to, amount) decreases the sender's balance
+  by exactly `amount`, increases the recipient's balance by exactly `amount`,
+  and does not change the balance of any third address. Sum of balances is
+  preserved.
+theorem_signature: |
+  ∀ (s : ERC20.State) (from_ to : Address) (amount : U256),
+    from_ ≠ to →
+    ∃ s' : ERC20.State,
+      ERC20.transfer s from_ to amount = .ok s' ∧
+      s'.balanceOf from_ = s.balanceOf from_ - amount ∧
+      s'.balanceOf to = s.balanceOf to + amount ∧
+      (∀ x : Address, x ≠ from_ → x ≠ to → s'.balanceOf x = s.balanceOf x)
+mathlib_sha: 5b1c4e7
+lean_toolchain: "leanprover/lean4:v4.10.0"
+axiom_whitelist:
+  - propext
+  - Classical.choice
+  - Quot.sound
+bounty_usdc: 5000000000  # 5,000 USDC
+deadline_unix: 1764547200  # 2026-12-01
+challenge_window_seconds: 172800  # 48h
+tags:
+  - solidity
+  - erc20
+  - invariants

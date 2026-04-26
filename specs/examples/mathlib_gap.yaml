@@ -1,0 +1,22 @@
+bounty_id: mathlib-gap-finite-prod-cardinality-001
+description: |
+  Close a small gap in Mathlib: provide the missing lemma stating that
+  the cardinality of the indexed product of a finite family of finite
+  types equals the product of cardinalities, in a form that matches the
+  signature requested in Mathlib issue #15234.
+theorem_signature: |
+  ∀ {ι : Type*} [Fintype ι] (α : ι → Type*) [∀ i, Fintype (α i)],
+    Fintype.card ((i : ι) → α i) = ∏ i, Fintype.card (α i)
+mathlib_sha: 5b1c4e7
+lean_toolchain: "leanprover/lean4:v4.10.0"
+axiom_whitelist:
+  - propext
+  - Classical.choice
+  - Quot.sound
+bounty_usdc: 500000000  # 500 USDC
+deadline_unix: 1748736000  # 2026-06-01
+challenge_window_seconds: 43200  # 12h
+tags:
+  - mathlib
+  - finite
+  - cardinality

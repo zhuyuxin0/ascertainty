@@ -1,0 +1,17 @@
+# Ascertainty bounty spec schema (v1)
+#
+# Required fields
+# ---------------
+# bounty_id:                  str   non-empty, kebab-case identifier (your label)
+# theorem_signature:          str   the claim being bountied, in Lean4 syntax
+# mathlib_sha:                str   git sha (>= 7 chars) of the Mathlib commit the proof must build against
+# lean_toolchain:             str   e.g. "leanprover/lean4:v4.10.0"
+# axiom_whitelist:            list  list of axiom names the kernel may use beyond the empty set
+# bounty_usdc:                int   USDC amount in raw 6-decimal units (5 USDC = 5000000)
+# deadline_unix:              int   unix seconds; submissions after this are rejected
+# challenge_window_seconds:   int   seconds the solver must wait after submitProof before claimBounty
+#
+# Optional fields
+# ---------------
+# description:                str   human-readable context
+# tags:                       list  free-form tags for indexing (e.g. ["mathlib", "foundations"])
