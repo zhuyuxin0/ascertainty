@@ -11,6 +11,7 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS bounties (
     id                          INTEGER PRIMARY KEY AUTOINCREMENT,
     spec_hash                   TEXT NOT NULL UNIQUE,
+    spec_yaml                   TEXT NOT NULL,
     poster                      TEXT NOT NULL,
     amount_usdc                 TEXT NOT NULL,
     deadline_unix               INTEGER NOT NULL,
@@ -140,6 +141,11 @@ async def init_db() -> None:
         await db.execute("PRAGMA busy_timeout=5000")
         await db.execute("PRAGMA synchronous=NORMAL")
         await db.executescript(SCHEMA)
+        # Idempotent migration: add spec_yaml to bounties if upgrading from M1.
+        async with db.execute("PRAGMA table_info(bounties)") as cur:
+            cols = {row[1] for row in await cur.fetchall()}
+        if "spec_yaml" not in cols:
+            await db.execute("ALTER TABLE bounties ADD COLUMN spec_yaml TEXT NOT NULL DEFAULT ''")
         await db.commit()
 
 
@@ -148,6 +154,7 @@ async def init_db() -> None:
 async def insert_bounty(
     *,
     spec_hash: str,
+    spec_yaml: str,
     poster: str,
     amount_usdc: str,
     deadline_unix: int,
@@ -160,11 +167,11 @@ async def insert_bounty(
         try:
             cur = await db.execute(
                 """INSERT INTO bounties
-                   (spec_hash, poster, amount_usdc, deadline_unix,
+                   (spec_hash, spec_yaml, poster, amount_usdc, deadline_unix,
                     challenge_window_seconds, created_at,
                     onchain_bounty_id, tx_hash)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                (spec_hash, poster, amount_usdc, deadline_unix,
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (spec_hash, spec_yaml, poster, amount_usdc, deadline_unix,
                  challenge_window_seconds, created_at,
                  onchain_bounty_id, tx_hash),
             )
