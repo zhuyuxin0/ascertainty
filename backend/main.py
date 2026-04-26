@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import os
 import time
@@ -11,7 +12,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from backend import claim_task, db, og_chain, publisher, watcher
+from backend import claim_task, db, keeperhub, og_chain, publisher, watcher
 from backend.attestation import build_attestation, sign_attestation
 from backend.og_compute import explain_verification
 from backend.og_storage import upload_attestation
@@ -197,12 +198,41 @@ async def submit_proof(body: SubmitProofBody) -> dict[str, Any]:
                 "block_number": onchain.block_number,
             }
 
+    keeperhub_field = None
+    if result.accepted and keeperhub.is_configured():
+        workflow_id = os.environ["KEEPERHUB_WORKFLOW_ID"]
+        kh_inputs = {
+            "bountyId": bounty.get("onchain_bounty_id"),
+            "attestationHash": signed["attestation_hash"],
+            "solver": body.solver_address,
+        }
+        kh_resp = await keeperhub.execute_oneoff(workflow_id, kh_inputs)
+        execution_id = None
+        status = "ok" if kh_resp else "skipped"
+        if isinstance(kh_resp, dict):
+            execution_id = kh_resp.get("executionId") or kh_resp.get("id")
+            status = kh_resp.get("status", status)
+        await db.insert_kh_execution(
+            ts=now,
+            bounty_id=body.bounty_id,
+            workflow_id=workflow_id,
+            execution_id=execution_id,
+            status=status,
+            error=None if kh_resp is not None else "execute_oneoff returned None",
+            inputs_json=json.dumps(kh_inputs),
+        )
+        keeperhub_field = {
+            "execution_id": execution_id,
+            "status": status,
+        }
+
     return {
         "attestation": signed,
         "storage": storage_field,
         "explanation": explanation,
         "kernel_output": result.kernel_output,
         "onchain": onchain_field,
+        "keeperhub": keeperhub_field,
     }
 
 
