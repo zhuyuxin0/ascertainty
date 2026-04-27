@@ -11,6 +11,7 @@ import { RaceCarGLTF } from "./RaceCarGLTF";
 import { Track } from "./Track";
 import { CameraRig } from "./CameraRig";
 import { PostFX } from "./PostFX";
+import { Skyline } from "./Skyline";
 import { MOCK_GRAPHS, pickGraphForBounty } from "@/lib/mockData";
 import { useRaceEngine, type CarState } from "@/lib/raceEngine";
 import type { TrackGeometry } from "@/lib/trackMapping";
@@ -46,8 +47,8 @@ export default function Race({ mode = "test", graphKey, bountyId, onState }: Rac
       camera={{ position: [0, 6, 12], fov: 42, near: 0.1, far: 240 }}
       style={{ background: "#050507" }}
     >
-      <color attach="background" args={["#050507"]} />
-      <fog attach="fog" args={["#050507", 14, 70]} />
+      <color attach="background" args={["#06070d"]} />
+      <fog attach="fog" args={["#0a0e18", 18, 95]} />
 
       {/* low ambient — let directional + rim do the work */}
       <ambientLight intensity={0.12} color="#5b6b80" />
@@ -83,15 +84,16 @@ export default function Race({ mode = "test", graphKey, bountyId, onState }: Rac
           saturation={0}
           speed={0.25}
         />
+        <Skyline count={42} innerRadius={70} outerRadius={105} />
         {/* atmospheric volumetric particles drifting through scene */}
         <Sparkles
-          count={120}
-          scale={[80, 18, 80]}
-          size={2}
-          speed={0.25}
-          opacity={0.55}
+          count={140}
+          scale={[100, 20, 100]}
+          size={2.4}
+          speed={0.3}
+          opacity={0.6}
           color="#00d4aa"
-          noise={0.2}
+          noise={0.25}
         />
         {mode === "test" ? (
           <TestSceneContents graph={graph} />

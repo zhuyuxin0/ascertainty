@@ -159,11 +159,21 @@ async def _run_bootstrap(args: argparse.Namespace) -> int:
 async def _run_seed_race(args: argparse.Namespace) -> int:
     load_dotenv()
     from backend import db
+    import aiosqlite
 
     bounty = await db.get_bounty(args.bounty_id)
     if bounty is None:
         print(f"error: bounty {args.bounty_id} not found", file=sys.stderr)
         return 1
+
+    # Wipe any prior events for this bounty so the replay starts clean.
+    async with db._conn() as conn:
+        cur = await conn.execute(
+            "DELETE FROM race_events WHERE bounty_id = ?", (args.bounty_id,),
+        )
+        await conn.commit()
+        if cur.rowcount:
+            print(f"cleared {cur.rowcount} prior race events for bounty {args.bounty_id}")
 
     now = int(time.time())
     n = args.solvers
@@ -178,40 +188,39 @@ async def _run_seed_race(args: argparse.Namespace) -> int:
 
     inserted = 0
 
-    # 10 progress checkpoints per solver, evenly spaced across `duration`
+    # 30 progress checkpoints per solver, evenly spaced across `duration`
+    # (more checkpoints = visually smoother motion in the dashboard replay)
+    CHECKPOINTS = 30
     for solver_idx, solver in enumerate(solvers):
-        for step in range(1, 11):
-            ts = now + int(step * duration / 10)
-            # Slight stagger so cars are interestingly out of sync
-            ts += solver_idx * 1
+        for step in range(1, CHECKPOINTS + 1):
+            ts = now + int(step * duration / CHECKPOINTS)
+            ts += solver_idx * 1  # slight stagger between cars
             await db.insert_race_event(
                 bounty_id=args.bounty_id,
                 solver_address=solver,
                 event_type="progress",
-                data_json=json.dumps({"checkpoint": step, "fraction": step / 10}),
+                data_json=json.dumps({"checkpoint": step, "fraction": step / CHECKPOINTS}),
                 ts=ts,
             )
             inserted += 1
 
-    # Solver 1: backtracks at step 4 then catches up
+    # Solver 3: backtracks at ~40% then catches up
     if n >= 3:
         await db.insert_race_event(
             bounty_id=args.bounty_id,
             solver_address=solvers[2],
             event_type="backtrack",
-            data_json=json.dumps({"to_checkpoint": 3}),
-            ts=now + int(4 * duration / 10) + 1,
+            data_json=json.dumps({"to_checkpoint": int(0.3 * CHECKPOINTS)}),
+            ts=now + int(0.4 * duration) + 1,
         )
         inserted += 1
-
-    # Solver 1: pit stop after backtrack
-    if n >= 3:
+        # Pit stop right after backtrack
         await db.insert_race_event(
             bounty_id=args.bounty_id,
             solver_address=solvers[2],
             event_type="pit",
             data_json=json.dumps({"reason": "refactor"}),
-            ts=now + int(5 * duration / 10),
+            ts=now + int(0.5 * duration),
         )
         inserted += 1
 
@@ -221,8 +230,8 @@ async def _run_seed_race(args: argparse.Namespace) -> int:
             bounty_id=args.bounty_id,
             solver_address=solvers[1],
             event_type="crash",
-            data_json=json.dumps({"at_checkpoint": 7, "reason": "kernel rejected axiom"}),
-            ts=now + int(7 * duration / 10) + 2,
+            data_json=json.dumps({"at_checkpoint": int(0.7 * CHECKPOINTS), "reason": "kernel rejected axiom"}),
+            ts=now + int(0.7 * duration) + 2,
         )
         inserted += 1
 

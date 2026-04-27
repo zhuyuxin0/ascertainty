@@ -270,15 +270,18 @@ async def bounty_status(bounty_id: int) -> dict[str, Any]:
 async def bounty_race_events(bounty_id: int, since: int = 0) -> dict[str, Any]:
     """Stream of race events the dashboard plays back to drive the cars.
 
-    `since` is a unix timestamp (seconds); the dashboard polls with the
-    largest `ts` it has seen so the response stays small as the race
-    progresses.
+    Events with a `ts` in the future (e.g. scripted seed-race rows that
+    haven't "happened" yet) are withheld until their timestamp arrives.
+    This makes a 90-second seeded race actually take 90 seconds to play
+    out, instead of fast-forwarding to the finish on the first poll.
     """
     bounty = await db.get_bounty(bounty_id)
     if bounty is None:
         raise HTTPException(status_code=404, detail="bounty not found")
+    now_ts = int(time.time())
     events = await db.race_events_for_bounty(bounty_id, since_ts=since)
-    return {"events": events, "now": int(time.time())}
+    events = [e for e in events if e["ts"] <= now_ts]
+    return {"events": events, "now": now_ts}
 
 
 @app.get("/leaderboard")

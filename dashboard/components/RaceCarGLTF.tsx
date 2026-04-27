@@ -72,7 +72,7 @@ export function RaceCarGLTF({
     const up = new THREE.Vector3(0, 1, 0);
     const side = heading.clone().cross(up).normalize();
     pos.addScaledVector(side, lateralOffset);
-    pos.y += 0.2;
+    pos.y += 0.7; // lift so the GLTF wheels rest on the track surface
 
     if (car.status === "crashed") {
       if (crashStartTs.current === null) {
