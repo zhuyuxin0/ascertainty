@@ -2,18 +2,26 @@
 
 import { Canvas } from "@react-three/fiber";
 import { Physics, usePlane } from "@react-three/cannon";
-import { Stars, Grid } from "@react-three/drei";
-import { Suspense, useRef } from "react";
+import { Stars } from "@react-three/drei";
+import { Suspense, useRef, useState } from "react";
 import * as THREE from "three";
 
 import { Vehicle } from "./Vehicle";
+import { Track } from "./Track";
+import { MOCK_GRAPHS } from "@/lib/mockData";
+import type { TrackGeometry } from "@/lib/trackMapping";
 
 /**
- * Race scene foundation: Physics provider + ground plane + at least one
- * controllable vehicle. Track + multiple cars + camera rig + HUD compose
- * into this in later sub-tasks.
+ * Race scene: Physics provider + procedural track + at least one
+ * controllable vehicle spawned at the track start. Multiple cars +
+ * camera rig + HUD compose into this in later sub-tasks.
  */
-export default function Race() {
+export default function Race({ graphKey = "sort" }: { graphKey?: keyof typeof MOCK_GRAPHS }) {
+  const [track, setTrack] = useState<TrackGeometry | null>(null);
+  const graph = MOCK_GRAPHS[graphKey] ?? MOCK_GRAPHS.sort;
+  const spawn: [number, number, number] = track
+    ? [track.spawnPoint.x, track.spawnPoint.y + 1.4, track.spawnPoint.z]
+    : [0, 1.4, 0];
   return (
     <Canvas
       shadows
@@ -60,21 +68,8 @@ export default function Race() {
           defaultContactMaterial={{ friction: 0.5, restitution: 0.05 }}
         >
           <Ground />
-          <Grid
-            args={[80, 80]}
-            position={[0, 0.005, 0]}
-            cellSize={1}
-            cellThickness={0.3}
-            cellColor="#15151c"
-            sectionSize={6}
-            sectionThickness={0.8}
-            sectionColor="#00d4aa"
-            fadeDistance={60}
-            fadeStrength={1.2}
-            followCamera={false}
-            infiniteGrid
-          />
-          <Vehicle position={[0, 1.4, 0]} color="#00d4aa" />
+          <Track graph={graph} onReady={setTrack} />
+          {track && <Vehicle key={graphKey} position={spawn} color="#00d4aa" />}
         </Physics>
       </Suspense>
     </Canvas>
