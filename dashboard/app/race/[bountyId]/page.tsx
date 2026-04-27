@@ -1,6 +1,8 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 
 import RaceCanvas from "@/components/RaceCanvas";
@@ -9,12 +11,20 @@ import { api, type Bounty } from "@/lib/api";
 import type { CarState } from "@/lib/raceEngine";
 import type { TrackGeometry } from "@/lib/trackMapping";
 
+// Debug overlays — only loaded when ?debug=1
+const DebugOverlay = dynamic(
+  () => import("@/components/DebugOverlay").then((m) => m.DebugOverlay),
+  { ssr: false },
+);
+
 export default function RaceForBountyPage({
   params,
 }: {
   params: { bountyId: string };
 }) {
   const bountyId = parseInt(params.bountyId, 10);
+  const search = useSearchParams();
+  const debug = search?.get("debug") === "1";
   const [bounty, setBounty] = useState<Bounty | null>(null);
   const [cars, setCars] = useState<CarState[]>([]);
   const [_track, setTrack] = useState<TrackGeometry | null>(null);
@@ -84,6 +94,8 @@ export default function RaceForBountyPage({
           waiting for solvers…
         </div>
       )}
+
+      {debug && <DebugOverlay />}
     </main>
   );
 }
