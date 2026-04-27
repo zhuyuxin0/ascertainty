@@ -9,8 +9,10 @@ import * as THREE from "three";
 import { Vehicle } from "./Vehicle";
 import { RaceCar } from "./RaceCar";
 import { Track } from "./Track";
+import { CameraRig } from "./CameraRig";
+import { PostFX } from "./PostFX";
 import { MOCK_GRAPHS, pickGraphForBounty } from "@/lib/mockData";
-import { useRaceEngine } from "@/lib/raceEngine";
+import { useRaceEngine, type CarState } from "@/lib/raceEngine";
 import type { TrackGeometry } from "@/lib/trackMapping";
 
 type RaceProps = {
@@ -19,9 +21,12 @@ type RaceProps = {
   mode?: "test" | "replay";
   graphKey?: keyof typeof MOCK_GRAPHS;
   bountyId?: number;
+  /** Replay mode: lift cars + track refs out so the parent page can render
+   *  HTML overlays (HUD) using the same data. */
+  onState?: (state: { cars: CarState[]; track: TrackGeometry | null }) => void;
 };
 
-export default function Race({ mode = "test", graphKey, bountyId }: RaceProps) {
+export default function Race({ mode = "test", graphKey, bountyId, onState }: RaceProps) {
   const graph = useMemo(() => {
     if (mode === "replay" && bountyId !== undefined) return pickGraphForBounty(bountyId);
     if (graphKey) return MOCK_GRAPHS[graphKey];
@@ -70,9 +75,10 @@ export default function Race({ mode = "test", graphKey, bountyId }: RaceProps) {
         {mode === "test" ? (
           <TestSceneContents graph={graph} />
         ) : (
-          <ReplaySceneContents graph={graph} bountyId={bountyId!} />
+          <ReplaySceneContents graph={graph} bountyId={bountyId!} onState={onState} />
         )}
       </Suspense>
+      <PostFX />
     </Canvas>
   );
 }
@@ -96,24 +102,37 @@ function TestSceneContents({ graph }: { graph: ReturnType<typeof pickGraphForBou
   );
 }
 
-function ReplaySceneContents({ graph, bountyId }: { graph: ReturnType<typeof pickGraphForBounty>; bountyId: number }) {
+function ReplaySceneContents({
+  graph,
+  bountyId,
+  onState,
+}: {
+  graph: ReturnType<typeof pickGraphForBounty>;
+  bountyId: number;
+  onState?: (state: { cars: CarState[]; track: TrackGeometry | null }) => void;
+}) {
   const [track, setTrack] = useState<TrackGeometry | null>(null);
   const { cars } = useRaceEngine(bountyId);
   const carEntries = Object.values(cars);
 
+  // Bubble state up so parent can render the HUD with the same data
+  if (onState) {
+    // Effects must not run during render; we use a microtask
+    queueMicrotask(() => onState({ cars: carEntries, track }));
+  }
+
   return (
-    <Physics
-      broadphase="SAP"
-      gravity={[0, -9.81, 0]}
-      allowSleep
-    >
-      <Ground />
-      <Track graph={graph} onReady={setTrack} />
-      {track &&
-        carEntries.map((car, i) => (
-          <RaceCar key={car.solver} car={car} track={track} index={i} />
-        ))}
-    </Physics>
+    <>
+      <CameraRig cars={carEntries} track={track} />
+      <Physics broadphase="SAP" gravity={[0, -9.81, 0]} allowSleep>
+        <Ground />
+        <Track graph={graph} onReady={setTrack} />
+        {track &&
+          carEntries.map((car, i) => (
+            <RaceCar key={car.solver} car={car} track={track} index={i} />
+          ))}
+      </Physics>
+    </>
   );
 }
 
