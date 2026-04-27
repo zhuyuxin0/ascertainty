@@ -23,7 +23,7 @@ export function BountyCard({ bounty }: { bounty: Bounty }) {
 
   return (
     <Link
-      href={`/race/${bounty.id}`}
+      href={`/bounty/${bounty.id}`}
       className="border border-line p-5 flex flex-col gap-4 hover:border-cyan/60 transition-colors group"
     >
       <div className="flex items-center justify-between">
@@ -54,7 +54,7 @@ export function BountyCard({ bounty }: { bounty: Bounty }) {
       </div>
 
       <div className="font-mono text-[10px] uppercase tracking-widest text-cyan/60 group-hover:text-cyan flex items-center gap-2">
-        watch race →
+        view evidence →
       </div>
     </Link>
   );

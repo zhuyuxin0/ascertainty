@@ -44,6 +44,11 @@ CREATE TABLE IF NOT EXISTS submissions (
     accepted            INTEGER NOT NULL DEFAULT 0,
     submitted_at        INTEGER NOT NULL,
     onchain_tx_hash     TEXT,
+    storage_root_hash   TEXT,
+    storage_tx_hash     TEXT,
+    tee_explanation     TEXT,
+    kernel_output_hash  TEXT,
+    verifier_mode       TEXT,
     UNIQUE(bounty_id, solver_address)
 );
 CREATE INDEX IF NOT EXISTS idx_submissions_bounty ON submissions(bounty_id);
@@ -151,6 +156,13 @@ async def init_db() -> None:
             cols = {row[1] for row in await cur.fetchall()}
         if "spec_yaml" not in cols:
             await db.execute("ALTER TABLE bounties ADD COLUMN spec_yaml TEXT NOT NULL DEFAULT ''")
+        # Idempotent migration: add 0G/verifier evidence columns to submissions.
+        async with db.execute("PRAGMA table_info(submissions)") as cur:
+            sub_cols = {row[1] for row in await cur.fetchall()}
+        for col in ("storage_root_hash", "storage_tx_hash", "tee_explanation",
+                    "kernel_output_hash", "verifier_mode"):
+            if col not in sub_cols:
+                await db.execute(f"ALTER TABLE submissions ADD COLUMN {col} TEXT")
         await db.commit()
 
 
@@ -336,16 +348,25 @@ async def insert_submission(
     accepted: bool,
     submitted_at: int,
     onchain_tx_hash: Optional[str] = None,
+    storage_root_hash: Optional[str] = None,
+    storage_tx_hash: Optional[str] = None,
+    tee_explanation: Optional[str] = None,
+    kernel_output_hash: Optional[str] = None,
+    verifier_mode: Optional[str] = None,
 ) -> Optional[int]:
     async with _conn() as db:
         try:
             cur = await db.execute(
                 """INSERT INTO submissions
                    (bounty_id, solver_address, attestation_hash, proof_hash,
-                    accepted, submitted_at, onchain_tx_hash)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    accepted, submitted_at, onchain_tx_hash,
+                    storage_root_hash, storage_tx_hash, tee_explanation,
+                    kernel_output_hash, verifier_mode)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (bounty_id, solver_address, attestation_hash, proof_hash,
-                 1 if accepted else 0, submitted_at, onchain_tx_hash),
+                 1 if accepted else 0, submitted_at, onchain_tx_hash,
+                 storage_root_hash, storage_tx_hash, tee_explanation,
+                 kernel_output_hash, verifier_mode),
             )
             await db.commit()
             return cur.lastrowid

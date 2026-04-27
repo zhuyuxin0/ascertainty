@@ -184,9 +184,13 @@ async def submit_proof(body: SubmitProofBody) -> dict[str, Any]:
     signed = sign_attestation(unsigned, private_key)
 
     storage_field = None
+    storage_root_hash: str | None = None
+    storage_tx_hash: str | None = None
     if body.upload:
         storage = await upload_attestation(signed)
         if storage is not None:
+            storage_root_hash = storage.root_hash
+            storage_tx_hash = storage.tx_hash
             storage_field = {
                 "root_hash": storage.root_hash,
                 "tx_hash": storage.tx_hash,
@@ -206,6 +210,11 @@ async def submit_proof(body: SubmitProofBody) -> dict[str, Any]:
         proof_hash=result.proof_hash,
         accepted=result.accepted,
         submitted_at=now,
+        storage_root_hash=storage_root_hash,
+        storage_tx_hash=storage_tx_hash,
+        tee_explanation=explanation,
+        kernel_output_hash=signed.get("kernel_output_hash"),
+        verifier_mode=result.mode,
     )
     await db.update_bounty_status(body.bounty_id, "submitted" if result.accepted else "open")
 

@@ -27,6 +27,11 @@ export type Submission = {
   accepted: number;
   submitted_at: number;
   onchain_tx_hash: string | null;
+  storage_root_hash: string | null;
+  storage_tx_hash: string | null;
+  tee_explanation: string | null;
+  kernel_output_hash: string | null;
+  verifier_mode: string | null;
 };
 
 export type Solver = {
