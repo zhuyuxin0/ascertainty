@@ -1,5 +1,6 @@
 import Link from "next/link";
 import SceneCanvas from "@/components/SceneCanvas";
+import { LiveCounter } from "@/components/LiveCounter";
 
 export default function HomePage() {
   return (
@@ -42,7 +43,7 @@ export default function HomePage() {
         </div>
 
         <div className="grid grid-cols-3 gap-6 max-w-2xl">
-          <Stat label="Bounties" value="—" hint="across all chains" />
+          <LiveCounter label="Bounties" hint="all states" metric="bounties" />
           <Stat label="Solved" value="—" hint="cumulative" />
           <Stat label="USDC settled" value="—" hint="lifetime" />
         </div>
