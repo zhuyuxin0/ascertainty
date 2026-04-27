@@ -56,6 +56,20 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     sr = sub.add_parser(
+        "submit-relayed",
+        help="end-to-end: generate ephemeral solver, sign attestation, POST "
+             "/bounty/submit with signature → operator relays via submitProofFor",
+    )
+    sr.add_argument("--api", default="http://localhost:8000",
+                    help="backend base URL (default http://localhost:8000)")
+    sr.add_argument("--bounty-id", type=int, required=True,
+                    help="DB bounty id (must already be on-chain)")
+    sr.add_argument("--proof", required=True, type=Path,
+                    help="path to .lean proof file the solver wants to submit")
+    sr.add_argument("--solver-key", default=None,
+                    help="hex private key for the solver (omit to generate fresh)")
+
+    sr = sub.add_parser(
         "seed-race",
         help="insert a 60s scripted race into race_events for the dashboard demo",
     )
@@ -251,6 +265,88 @@ async def _run_seed_race(args: argparse.Namespace) -> int:
     return 0
 
 
+async def _run_submit_relayed(args: argparse.Namespace) -> int:
+    """Demonstrate the gasless solver-relayer flow.
+
+    1. Build the unsigned attestation locally (so we know its hash without
+       trusting the server).
+    2. GET /bounty/<id>/submit-message?attestation_hash=<hash> — server
+       returns the keccak256 message.
+    3. Solver private key signs that message via EIP-191 personal_sign.
+    4. POST /bounty/submit with `signature` set — operator wallet relays
+       on-chain via BountyFactory.submitProofFor. Solver pays no gas.
+    """
+    load_dotenv()
+    import secrets
+    import httpx
+    from eth_account import Account
+    from eth_account.messages import encode_defunct
+
+    operator_key = os.getenv("OG_PRIVATE_KEY")
+    if not operator_key:
+        print("error: OG_PRIVATE_KEY not set (server uses it to attest + relay)",
+              file=sys.stderr)
+        return 1
+
+    # 1) verify locally to compute the attestation hash deterministically
+    from backend.attestation import build_attestation, sign_attestation
+    from backend.spec import parse_spec
+    import yaml as _yaml
+
+    async with httpx.AsyncClient(base_url=args.api, timeout=60.0) as client:
+        r = await client.get(f"/bounty/{args.bounty_id}/status")
+        r.raise_for_status()
+        status = r.json()
+        spec = parse_spec(_yaml.safe_load(status["bounty"]["spec_yaml"]))
+        proof_text = args.proof.read_text()
+        result = await verify(spec, proof_text)
+        if not result.accepted:
+            print(f"verifier rejected proof — would never reach chain")
+            return 1
+        unsigned = build_attestation(spec, result)
+        signed = sign_attestation(unsigned, operator_key)
+        attestation_hash = "0x" + signed["attestation_hash"]
+        print(f"attestation_hash : {attestation_hash}")
+
+        # 2) ask server for the message_hash to sign
+        r = await client.get(
+            f"/bounty/{args.bounty_id}/submit-message",
+            params={"attestation_hash": attestation_hash},
+        )
+        r.raise_for_status()
+        msg = r.json()
+        message_hash = bytes.fromhex(msg["message_hash"].removeprefix("0x"))
+        print(f"message_hash     : 0x{message_hash.hex()}")
+
+        # 3) ephemeral solver signs
+        if args.solver_key:
+            solver_acct = Account.from_key(args.solver_key.removeprefix("0x"))
+            print(f"solver           : {solver_acct.address} (provided)")
+        else:
+            solver_acct = Account.from_key("0x" + secrets.token_hex(32))
+            print(f"solver           : {solver_acct.address} (ephemeral)")
+        signed_msg = solver_acct.sign_message(encode_defunct(message_hash))
+        sig_hex = signed_msg.signature.hex()
+        print(f"signature        : 0x{sig_hex}")
+
+        # 4) submit
+        r = await client.post(
+            "/bounty/submit",
+            json={
+                "bounty_id": args.bounty_id,
+                "solver_address": solver_acct.address,
+                "proof": proof_text,
+                "signature": sig_hex,
+            },
+        )
+        r.raise_for_status()
+        resp = r.json()
+        print(json.dumps(resp, indent=2))
+        if (resp.get("onchain") or {}).get("via") == "submitProofFor":
+            print("\n✓ relayed via BountyFactory.submitProofFor — solver paid no gas")
+        return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
@@ -260,6 +356,8 @@ def main(argv: list[str] | None = None) -> int:
         return asyncio.run(_run_bootstrap(args))
     if args.cmd == "seed-race":
         return asyncio.run(_run_seed_race(args))
+    if args.cmd == "submit-relayed":
+        return asyncio.run(_run_submit_relayed(args))
     parser.print_help()
     return 1
 

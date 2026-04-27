@@ -107,7 +107,7 @@ export default async function BountyDetailPage({
             )}
             {bounty.onchain_bounty_id !== null && (
               <Field label="contract">
-                <ExplorerAddr addr="0xA770aa3aDAA21895a94a0650976A0345839505e1" />
+                <ExplorerAddr addr="0x11E351EA4Ec6F9163916c1941320a0F6d2b80C1c" />
               </Field>
             )}
           </div>

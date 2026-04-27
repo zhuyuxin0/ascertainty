@@ -4,6 +4,8 @@ pragma solidity ^0.8.24;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 
 interface ISolverRegistry {
     function recordSolve(address solver) external;
@@ -17,6 +19,8 @@ interface ISolverRegistry {
 /// DisputeManager-driven slashing arrives in M3.
 contract BountyFactory is ReentrancyGuard {
     using SafeERC20 for IERC20;
+    using ECDSA for bytes32;
+    using MessageHashUtils for bytes32;
 
     enum Status { Open, Submitted, Challenged, Settled, Cancelled }
 
@@ -101,6 +105,35 @@ contract BountyFactory is ReentrancyGuard {
         b.submittedAt = uint64(block.timestamp);
 
         emit ProofSubmitted(bountyId, msg.sender, attestationHash, b.submittedAt);
+    }
+
+    /// @notice Operator-relay submission: anyone may post a proof on behalf of a
+    /// solver who signed (bountyId, attestationHash, address(this)) via EIP-191
+    /// personal_sign. The recovered address becomes the on-chain solver of
+    /// record and is the only party that can later claim the bounty.
+    function submitProofFor(
+        uint256 bountyId,
+        bytes32 attestationHash,
+        address solver,
+        bytes calldata signature
+    ) external {
+        Bounty storage b = bounties[bountyId];
+        require(b.status == Status.Open, "not open");
+        require(block.timestamp <= b.deadline, "deadline passed");
+        require(solver != address(0), "solver=0");
+
+        bytes32 messageHash = keccak256(
+            abi.encode("Ascertainty submitProof", bountyId, attestationHash, address(this))
+        );
+        address recovered = messageHash.toEthSignedMessageHash().recover(signature);
+        require(recovered == solver, "bad sig");
+
+        b.status = Status.Submitted;
+        b.solver = solver;
+        b.attestationHash = attestationHash;
+        b.submittedAt = uint64(block.timestamp);
+
+        emit ProofSubmitted(bountyId, solver, attestationHash, b.submittedAt);
     }
 
     function challengeProof(uint256 bountyId) external {

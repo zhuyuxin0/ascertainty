@@ -2,11 +2,11 @@
   "network": "galileo",
   "chainId": 16602,
   "deployer": "0xd932Aad9adA0B879f4654CD88071895085Fad0d0",
-  "deployedAt": 1777224097,
+  "deployedAt": 1777318178,
   "contracts": {
     "MockUSDC": "0x8D53B5b599caA7205fB869A14Dd7141c3866010a",
     "SolverRegistry": "0x6E5CEb3Ac85dA96479A0C080E7fB8D5762551A32",
-    "BountyFactory": "0xA770aa3aDAA21895a94a0650976A0345839505e1",
+    "BountyFactory": "0x11E351EA4Ec6F9163916c1941320a0F6d2b80C1c",
     "AgentNFT": "0x0cf5c9dd2CF3E48b2E1078995289d6b0690f1105"
   }
 }

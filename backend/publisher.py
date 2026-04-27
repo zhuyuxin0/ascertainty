@@ -117,6 +117,66 @@ async def submit_proof_onchain(
         return None
 
 
+async def submit_proof_for_onchain(
+    *,
+    onchain_bounty_id: int,
+    attestation_hash: bytes,
+    solver: str,
+    signature: bytes,
+) -> Optional[OnchainTxResult]:
+    """BountyFactory.submitProofFor — operator pays gas, recovered solver
+    becomes the on-chain owner of the submission."""
+    if not is_configured():
+        return None
+    if len(attestation_hash) != 32:
+        raise ValueError(f"attestation_hash must be 32 bytes, got {len(attestation_hash)}")
+    if len(signature) not in (64, 65):
+        raise ValueError(f"signature must be 64 or 65 bytes, got {len(signature)}")
+
+    factory = og_chain.get_factory()
+    try:
+        async with _lock:
+            fn = factory.functions.submitProofFor(
+                onchain_bounty_id,
+                attestation_hash,
+                og_chain.AsyncWeb3.to_checksum_address(solver),
+                signature,
+            )
+            tx_hash, block_number, _ = await _send_tx(fn)
+        log.info(
+            "publisher: submitProofFor -> tx=%s bountyId=%s solver=%s block=%s",
+            tx_hash, onchain_bounty_id, solver, block_number,
+        )
+        return OnchainTxResult(tx_hash=tx_hash, block_number=block_number)
+    except Exception as e:
+        log.warning("publisher: submitProofFor failed: %s", e)
+        return None
+
+
+def build_submit_proof_message(
+    *, onchain_bounty_id: int, attestation_hash: bytes,
+) -> bytes:
+    """Compute the keccak256 hash a solver must EIP-191 sign so that
+    BountyFactory.submitProofFor will recover their address. Mirrors the
+    Solidity `keccak256(abi.encode(...))` exactly."""
+    from eth_abi import encode
+    from eth_utils import keccak
+
+    if not is_configured():
+        raise RuntimeError("publisher not configured")
+    factory_addr = og_chain.addresses()["contracts"]["BountyFactory"]
+    encoded = encode(
+        ["string", "uint256", "bytes32", "address"],
+        [
+            "Ascertainty submitProof",
+            int(onchain_bounty_id),
+            attestation_hash,
+            og_chain.AsyncWeb3.to_checksum_address(factory_addr),
+        ],
+    )
+    return keccak(encoded)
+
+
 async def claim_bounty_onchain(*, onchain_bounty_id: int) -> Optional[OnchainTxResult]:
     if not is_configured():
         return None

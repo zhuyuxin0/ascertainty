@@ -164,6 +164,12 @@ class SubmitProofBody(BaseModel):
     proof: str
     upload: bool = True
     explain: bool = True
+    # Optional EIP-191 personal_sign over publisher.build_submit_proof_message().
+    # When present, on-chain submission uses BountyFactory.submitProofFor and
+    # the recovered address (must equal solver_address) becomes the on-chain
+    # solver of record. When omitted, falls back to operator-as-solver via
+    # BountyFactory.submitProof.
+    signature: str | None = None
 
 
 @app.post("/bounty/submit")
@@ -220,16 +226,27 @@ async def submit_proof(body: SubmitProofBody) -> dict[str, Any]:
 
     onchain_field = None
     if result.accepted and bounty.get("onchain_bounty_id") and publisher.is_configured():
-        onchain = await publisher.submit_proof_onchain(
-            onchain_bounty_id=bounty["onchain_bounty_id"],
-            attestation_hash=bytes.fromhex(signed["attestation_hash"]),
-        )
+        attestation_bytes = bytes.fromhex(signed["attestation_hash"])
+        if body.signature:
+            sig = bytes.fromhex(body.signature.removeprefix("0x"))
+            onchain = await publisher.submit_proof_for_onchain(
+                onchain_bounty_id=bounty["onchain_bounty_id"],
+                attestation_hash=attestation_bytes,
+                solver=body.solver_address,
+                signature=sig,
+            )
+        else:
+            onchain = await publisher.submit_proof_onchain(
+                onchain_bounty_id=bounty["onchain_bounty_id"],
+                attestation_hash=attestation_bytes,
+            )
         if onchain is not None:
             if submission_id is not None:
                 await db.set_submission_onchain(submission_id, onchain.tx_hash)
             onchain_field = {
                 "tx_hash": onchain.tx_hash,
                 "block_number": onchain.block_number,
+                "via": "submitProofFor" if body.signature else "submitProof",
             }
 
     keeperhub_field = None
@@ -267,6 +284,34 @@ async def submit_proof(body: SubmitProofBody) -> dict[str, Any]:
         "kernel_output": result.kernel_output,
         "onchain": onchain_field,
         "keeperhub": keeperhub_field,
+    }
+
+
+@app.get("/bounty/{bounty_id}/submit-message")
+async def submit_message(bounty_id: int, attestation_hash: str) -> dict[str, Any]:
+    """Return the keccak256 message a solver must EIP-191 personal_sign for
+    BountyFactory.submitProofFor. Frontend / external solvers compute the
+    attestation hash off-chain, hit this endpoint to get the message, sign,
+    then POST /bounty/submit with `signature` set."""
+    bounty = await db.get_bounty(bounty_id)
+    if bounty is None:
+        raise HTTPException(status_code=404, detail="bounty not found")
+    if bounty.get("onchain_bounty_id") is None:
+        raise HTTPException(status_code=400, detail="bounty not yet on-chain")
+    if not publisher.is_configured():
+        raise HTTPException(status_code=503, detail="publisher not configured")
+    raw = bytes.fromhex(attestation_hash.removeprefix("0x"))
+    if len(raw) != 32:
+        raise HTTPException(status_code=400, detail="attestation_hash must be 32 bytes hex")
+    message_hash = publisher.build_submit_proof_message(
+        onchain_bounty_id=bounty["onchain_bounty_id"],
+        attestation_hash=raw,
+    )
+    return {
+        "onchain_bounty_id": bounty["onchain_bounty_id"],
+        "attestation_hash": "0x" + raw.hex(),
+        "message_hash": "0x" + message_hash.hex(),
+        "scheme": "EIP-191 personal_sign over message_hash",
     }
 
 

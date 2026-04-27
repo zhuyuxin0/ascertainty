@@ -52,6 +52,18 @@ BOUNTY_FACTORY_ABI: list[dict[str, Any]] = [
     },
     {
         "type": "function",
+        "name": "submitProofFor",
+        "stateMutability": "nonpayable",
+        "inputs": [
+            {"name": "bountyId", "type": "uint256"},
+            {"name": "attestationHash", "type": "bytes32"},
+            {"name": "solver", "type": "address"},
+            {"name": "signature", "type": "bytes"},
+        ],
+        "outputs": [],
+    },
+    {
+        "type": "function",
         "name": "claimBounty",
         "stateMutability": "nonpayable",
         "inputs": [{"name": "bountyId", "type": "uint256"}],
