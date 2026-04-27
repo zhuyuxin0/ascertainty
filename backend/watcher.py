@@ -132,36 +132,101 @@ async def _handle_bounty_created(ev) -> None:
 async def _handle_proof_submitted(ev) -> None:
     args = ev["args"]
     onchain_id = int(args["bountyId"])
+    solver = args["solver"]
     bounty = await db.get_bounty_by_onchain_id(onchain_id)
     if bounty is None:
         log.info("watcher: ProofSubmitted for unknown on-chain id=%s, skipping", onchain_id)
         return
     await db.update_bounty_status(bounty["id"], "submitted")
-    log.info("watcher: ProofSubmitted on-chain id=%s solver=%s",
-             onchain_id, args["solver"])
+    log.info("watcher: ProofSubmitted on-chain id=%s solver=%s", onchain_id, solver)
+    # Synthesize a race for the dashboard: progress events spread across
+    # the challenge window so the car visibly drives from spawn → near-finish
+    # over the same period the bounty is on-chain "submitted".
+    await _emit_synthetic_race(bounty, solver)
 
 
 async def _handle_proof_challenged(ev) -> None:
     args = ev["args"]
     onchain_id = int(args["bountyId"])
+    challenger = args["challenger"]
     bounty = await db.get_bounty_by_onchain_id(onchain_id)
     if bounty is None:
         return
     await db.update_bounty_status(bounty["id"], "challenged")
-    log.info("watcher: ProofChallenged on-chain id=%s challenger=%s",
-             onchain_id, args["challenger"])
+    log.info("watcher: ProofChallenged on-chain id=%s challenger=%s", onchain_id, challenger)
+    # Pit the cars currently racing on this bounty
+    submissions = await db.submissions_for_bounty(bounty["id"])
+    now = int(time.time())
+    for sub in submissions:
+        await db.insert_race_event(
+            bounty_id=bounty["id"],
+            solver_address=sub["solver_address"],
+            event_type="pit",
+            data_json='{"reason": "challenged"}',
+            ts=now,
+        )
 
 
 async def _handle_bounty_claimed(ev) -> None:
     args = ev["args"]
     onchain_id = int(args["bountyId"])
+    solver = args["solver"]
     bounty = await db.get_bounty_by_onchain_id(onchain_id)
     if bounty is None:
         return
     await db.update_bounty_status(bounty["id"], "settled")
-    await db.upsert_solver(address=args["solver"], ts=int(time.time()))
-    await db.increment_solver_reputation(args["solver"], delta=1)
+    await db.upsert_solver(address=solver, ts=int(time.time()))
+    await db.increment_solver_reputation(solver, delta=1)
     log.info("watcher: BountyClaimed on-chain id=%s solver=%s amount=%s",
-             onchain_id, args["solver"], int(args["amount"]))
+             onchain_id, solver, int(args["amount"]))
+    # Mark the race finished (clears any in-flight progress events)
+    await db.insert_race_event(
+        bounty_id=bounty["id"],
+        solver_address=solver,
+        event_type="finish",
+        data_json=f'{{"final_amount_usdc": {int(args["amount"])}}}',
+        ts=int(time.time()),
+    )
     from backend import telegram_bot
-    await telegram_bot.broadcast_bounty_claimed(bounty, args["solver"], int(args["amount"]))
+    await telegram_bot.broadcast_bounty_claimed(bounty, solver, int(args["amount"]))
+
+
+async def _emit_synthetic_race(bounty: dict, solver: str, num_steps: int = 12) -> None:
+    """When a real ProofSubmitted event is observed, emit a series of
+    `progress` race events spread across the bounty's challenge window so
+    the dashboard /race/<id> page shows continuous motion until the
+    on-chain BountyClaimed event arrives and triggers the `finish`.
+
+    Idempotent guard: if we've already emitted progress events for this
+    (bounty, solver) pair, skip — prevents replays from doubling events
+    when the watcher backfills.
+    """
+    bounty_id = bounty["id"]
+    challenge_window = max(10, int(bounty.get("challenge_window_seconds", 30)))
+    now = int(time.time())
+
+    # Idempotency: don't emit if there's already a progress event for this
+    # solver on this bounty.
+    existing = await db.race_events_for_bounty(bounty_id, since_ts=0)
+    for e in existing:
+        if e["solver_address"] == solver and e["event_type"] == "progress":
+            log.info("watcher: race already emitted for bounty=%s solver=%s, skipping",
+                     bounty_id, solver)
+            return
+
+    # Spread progress events from now → now + challenge_window, ramping
+    # fraction from 0.05 to 0.92 (we leave the final 0.08 for the finish
+    # event from BountyClaimed).
+    import json as _json
+    for i in range(1, num_steps + 1):
+        ts = now + int(i * challenge_window / num_steps)
+        fraction = 0.05 + (0.87 * i / num_steps)
+        await db.insert_race_event(
+            bounty_id=bounty_id,
+            solver_address=solver,
+            event_type="progress",
+            data_json=_json.dumps({"checkpoint": i, "fraction": round(fraction, 4)}),
+            ts=ts,
+        )
+    log.info("watcher: synthesized %d race events for bounty=%s solver=%s over %ds",
+             num_steps, bounty_id, solver[:10], challenge_window)
