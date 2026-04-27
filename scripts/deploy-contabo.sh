@@ -1,48 +1,52 @@
 #!/usr/bin/env bash
-# Deploy Ascertainty backend to a Contabo (or any Docker-enabled) VPS.
+# Deploy Ascertainty backend to a Contabo (or any Docker + nginx) VPS.
 # Run from your local machine. Pass the SSH target as the first argument.
 #
 # Usage:
-#   ./scripts/deploy-contabo.sh root@your-vps-ip
-#   ./scripts/deploy-contabo.sh user@vmiNNNN.contaboserver.net
+#   ./scripts/deploy-contabo.sh <your-ssh-alias>          # uses ~/.ssh/config alias
+#   ./scripts/deploy-contabo.sh root@1.2.3.4
 #
 # Prerequisites on the VPS:
 #   - Docker + docker compose plugin installed
-#   - Ports 80 + 443 free (Caddy will bind them)
-#   - DNS A record api.ascertainty.xyz -> VPS IP already propagated
+#   - nginx running (we add a server block)
+#   - certbot installed (we use the --nginx plugin for HTTPS)
+#   - DNS A record api.ascertainty.xyz -> VPS IP propagated
 #
 # Local prereqs:
 #   - SSH key auth working to the target
-#   - .env populated with all keys (incl. LE_EMAIL)
+#   - .env populated (incl. LE_EMAIL for cert renewal notifications)
 
 set -euo pipefail
 
 if [ $# -lt 1 ]; then
   echo "usage: $0 <ssh_target>"
-  echo "  e.g. $0 root@1.2.3.4"
   exit 1
 fi
 
 SSH_TARGET="$1"
 REMOTE_DIR="${REMOTE_DIR:-/srv/ascertainty}"
+DOMAIN="${DOMAIN:-api.ascertainty.xyz}"
 
-echo "==> deploying to $SSH_TARGET into $REMOTE_DIR"
-
-# Pre-flight check
 if [ ! -f .env ]; then
-  echo "error: .env missing — populate it (copy from .env.example) before deploying" >&2
+  echo "error: .env missing — populate it before deploying" >&2
   exit 1
 fi
-if ! grep -q '^LE_EMAIL=.\+' .env; then
-  echo "warning: LE_EMAIL is empty in .env — Let's Encrypt cert renewal will be silent" >&2
+
+LE_EMAIL=$(grep '^LE_EMAIL=' .env | cut -d= -f2-)
+if [ -z "$LE_EMAIL" ]; then
+  echo "error: LE_EMAIL must be set in .env (used by certbot)" >&2
+  exit 1
 fi
 
-# 1. Make sure remote dir exists
-ssh "$SSH_TARGET" "mkdir -p $REMOTE_DIR"
+echo "==> deploying to $SSH_TARGET into $REMOTE_DIR ($DOMAIN)"
 
-# 2. Sync source — exclude things we don't need on the server
+# 1. Ensure remote dir exists (sudo because /srv requires root to create)
+ssh "$SSH_TARGET" "sudo mkdir -p $REMOTE_DIR && sudo chown \$(whoami):\$(whoami) $REMOTE_DIR"
+
+# 2. Sync source
 echo "==> rsync source"
 rsync -avz --delete \
+  -e "ssh" \
   --exclude '.git' \
   --exclude '.next' \
   --exclude 'node_modules' \
@@ -60,24 +64,43 @@ rsync -avz --delete \
   --exclude 'AGENTS.md' \
   ./ "$SSH_TARGET:$REMOTE_DIR/"
 
-# 3. Sync .env separately (rsync above excluded .env.example only; .env is in
-#    .dockerignore but we DO need it in the repo dir for docker compose env_file)
+# 3. Sync .env separately (excluded above)
 echo "==> rsync .env"
 scp .env "$SSH_TARGET:$REMOTE_DIR/.env"
 
-# 4. Build + start (or restart)
+# 4. Build + start the docker container
 echo "==> docker compose up --build -d"
 ssh "$SSH_TARGET" "cd $REMOTE_DIR && docker compose up -d --build"
 
-# 5. Show logs briefly so we can confirm boot
-echo "==> tailing api logs (Ctrl-C to stop)"
-ssh "$SSH_TARGET" "cd $REMOTE_DIR && docker compose logs --tail=30 api"
+# 5. Wait for healthy
+echo "==> waiting for /health on the host loopback"
+ssh "$SSH_TARGET" "for i in {1..30}; do
+  if curl -sf http://127.0.0.1:8000/health >/dev/null; then echo OK; exit 0; fi
+  sleep 2
+done; echo FAILED; docker compose logs --tail=50 ascertainty_api; exit 1"
+
+# 6. Install nginx server block (idempotent)
+echo "==> installing nginx server block"
+ssh "$SSH_TARGET" "sudo cp $REMOTE_DIR/scripts/nginx-ascertainty.conf /etc/nginx/sites-available/ascertainty && \
+  sudo ln -sf /etc/nginx/sites-available/ascertainty /etc/nginx/sites-enabled/ascertainty && \
+  sudo nginx -t && sudo systemctl reload nginx"
+
+# 7. Issue (or renew) Let's Encrypt cert via the nginx plugin
+echo "==> issuing/renewing Let's Encrypt cert for $DOMAIN"
+ssh "$SSH_TARGET" "sudo certbot --nginx \
+  -d $DOMAIN \
+  --email '$LE_EMAIL' \
+  --agree-tos --no-eff-email \
+  --redirect --keep-until-expiring -n"
+
+# 8. Final smoke test
+echo "==> final smoke test against https://$DOMAIN/health"
+sleep 2
+curl -sfS "https://$DOMAIN/health" && echo "" || (echo "smoke test FAILED" && exit 1)
 
 cat <<EOF
 
-==> Done. Verify:
-  curl https://api.ascertainty.xyz/health   # expect {"status":"ok",...}
-
+==> Deployed.
   Watch logs:    ssh $SSH_TARGET 'cd $REMOTE_DIR && docker compose logs -f api'
   Restart:       ssh $SSH_TARGET 'cd $REMOTE_DIR && docker compose restart api'
   Stop:          ssh $SSH_TARGET 'cd $REMOTE_DIR && docker compose down'
