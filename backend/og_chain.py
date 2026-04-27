@@ -207,6 +207,33 @@ AGENT_NFT_ABI: list[dict[str, Any]] = [
     },
     {
         "type": "function",
+        "name": "metadata",
+        "stateMutability": "view",
+        "inputs": [{"name": "", "type": "uint256"}],
+        "outputs": [
+            {"name": "storageRootHash", "type": "bytes32"},
+            {"name": "modelDescriptor", "type": "string"},
+            {"name": "versionTag", "type": "string"},
+            {"name": "mintedAt", "type": "uint256"},
+            {"name": "lastUpdatedAt", "type": "uint256"},
+        ],
+    },
+    {
+        "type": "function",
+        "name": "totalSupply",
+        "stateMutability": "view",
+        "inputs": [],
+        "outputs": [{"name": "", "type": "uint256"}],
+    },
+    {
+        "type": "function",
+        "name": "ownerOf",
+        "stateMutability": "view",
+        "inputs": [{"name": "tokenId", "type": "uint256"}],
+        "outputs": [{"name": "", "type": "address"}],
+    },
+    {
+        "type": "function",
         "name": "mint",
         "stateMutability": "nonpayable",
         "inputs": [
@@ -215,6 +242,17 @@ AGENT_NFT_ABI: list[dict[str, Any]] = [
             {"name": "_versionTag", "type": "string"},
         ],
         "outputs": [{"name": "", "type": "uint256"}],
+    },
+    {
+        "type": "function",
+        "name": "updateMetadata",
+        "stateMutability": "nonpayable",
+        "inputs": [
+            {"name": "tokenId", "type": "uint256"},
+            {"name": "_newStorageRootHash", "type": "bytes32"},
+            {"name": "_newVersionTag", "type": "string"},
+        ],
+        "outputs": [],
     },
 ]
 
