@@ -86,26 +86,16 @@ export default function Race({ mode = "test", graphKey, bountyId, onState }: Rac
         {/* Distant cyberpunk skyline silhouettes — three bands of depth */}
         <CityRing seed={mode === "replay" ? (bountyId ?? 1) * 17 : 1337} />
 
-        {/* Sky-wide drifting particles at car-eye-level for atmospheric depth */}
+        {/* A single restrained particle field for atmospheric haze */}
         <Sparkles
-          count={180}
-          scale={[120, 24, 120]}
-          size={3.5}
-          speed={0.4}
-          opacity={0.9}
+          count={70}
+          scale={[100, 14, 100]}
+          size={2.2}
+          speed={0.25}
+          opacity={0.55}
           color="#00d4aa"
-          noise={0.4}
-          position={[0, 4, 0]}
-        />
-        <Sparkles
-          count={80}
-          scale={[80, 12, 80]}
-          size={2.0}
-          speed={0.3}
-          opacity={0.7}
-          color="#ff6b35"
           noise={0.3}
-          position={[0, 2, 0]}
+          position={[0, 3, 0]}
         />
 
         {/* Bright sun anchor for the lens flare — large + intense so it

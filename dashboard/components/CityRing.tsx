@@ -5,94 +5,55 @@ import { Instances, Instance } from "@react-three/drei";
 import * as THREE from "three";
 
 /**
- * Three-band distant skyline: foreground props are deferred (those go on
- * the track edges via NeonArch), this component owns the midground +
- * distant rings. Buildings are dark with cyan/amber emissive accents
- * (windows). Designed to be visible through the FogExp2 — close enough
- * to read as silhouettes, far enough to suggest scale.
+ * Distant horizon as a forest of vertical light columns rather than
+ * cube buildings. Each column is a thin tall emissive rectangle —
+ * reads as "city skyline of glowing windows" rather than a low-poly
+ * model. Fog hides most of the geometry; only the glow remains.
+ *
+ * No shadows, no lighting contribution — purely emissive. The bloom
+ * pass picks up the columns as luminous pillars.
  */
 export function CityRing({ seed = 1337 }: { seed?: number }) {
-  const buildings = useMemo(() => {
-    const rng = mulberry32(seed);
-    const arr: { pos: [number, number, number]; size: [number, number, number]; emissive: number; emissiveColor: string }[] = [];
-    const COUNT = 64;
-    for (let i = 0; i < COUNT; i++) {
-      const angle = (i / COUNT) * Math.PI * 2 + rng() * 0.15;
-      const r = 80 + rng() * 50;
-      const x = Math.cos(angle) * r;
-      const z = Math.sin(angle) * r;
-      const w = 5 + rng() * 7;
-      const d = 5 + rng() * 7;
-      const h = 12 + Math.pow(rng(), 2) * 50;
-      arr.push({
-        pos: [x, h / 2, z],
-        size: [w, h, d],
-        emissive: rng() < 0.55 ? 0.6 + rng() * 0.7 : 0.05,
-        emissiveColor: rng() < 0.7 ? "#00d4aa" : "#ff6b35",
-      });
-    }
-    return arr;
-  }, [seed]);
-
-  const distantRing = useMemo(() => {
-    const rng = mulberry32(seed + 999);
-    const arr: { pos: [number, number, number]; size: [number, number, number] }[] = [];
-    const COUNT = 36;
-    for (let i = 0; i < COUNT; i++) {
-      const angle = (i / COUNT) * Math.PI * 2;
-      const r = 220 + rng() * 60;
-      arr.push({
-        pos: [Math.cos(angle) * r, 14 + rng() * 14, Math.sin(angle) * r],
-        size: [10 + rng() * 8, 22 + rng() * 28, 10 + rng() * 8],
-      });
-    }
-    return arr;
-  }, [seed]);
-
-  const cyanBldgs = buildings.filter((b) => b.emissiveColor === "#00d4aa");
-  const amberBldgs = buildings.filter((b) => b.emissiveColor === "#ff6b35");
+  const cyanCols = useMemo(() => buildColumns(seed, "#00d4aa"), [seed]);
+  const amberCols = useMemo(() => buildColumns(seed + 7, "#ff6b35"), [seed]);
+  const purpleCols = useMemo(() => buildColumns(seed + 13, "#8b5cf6"), [seed]);
 
   return (
     <group>
-      {/* Cyan-accent buildings (instanced) */}
-      <Instances range={cyanBldgs.length} renderOrder={-1}>
-        <boxGeometry args={[1, 1, 1]} />
-        <meshStandardMaterial
-          color="#0a0a14"
-          emissive="#00d4aa"
-          emissiveIntensity={0.45}
-          roughness={0.85}
-          metalness={0.15}
-        />
-        {cyanBldgs.map((b, i) => (
-          <Instance key={i} position={b.pos} scale={b.size} />
-        ))}
-      </Instances>
-
-      {/* Amber-accent buildings (instanced, separate material) */}
-      <Instances range={amberBldgs.length} renderOrder={-1}>
-        <boxGeometry args={[1, 1, 1]} />
-        <meshStandardMaterial
-          color="#0a0a14"
-          emissive="#ff6b35"
-          emissiveIntensity={0.4}
-          roughness={0.85}
-          metalness={0.15}
-        />
-        {amberBldgs.map((b, i) => (
-          <Instance key={i} position={b.pos} scale={b.size} />
-        ))}
-      </Instances>
-
-      {/* Distant ring — purely silhouette, no emissive */}
-      <Instances range={distantRing.length} renderOrder={-2}>
-        <boxGeometry args={[1, 1, 1]} />
-        <meshStandardMaterial color="#04050a" roughness={1} metalness={0} />
-        {distantRing.map((b, i) => (
-          <Instance key={i} position={b.pos} scale={b.size} />
-        ))}
-      </Instances>
+      <ColumnInstances cols={cyanCols} color="#00d4aa" />
+      <ColumnInstances cols={amberCols} color="#ff6b35" />
+      <ColumnInstances cols={purpleCols} color="#8b5cf6" />
     </group>
+  );
+}
+
+type Col = { pos: [number, number, number]; height: number; width: number };
+
+function buildColumns(seed: number, _color: string): Col[] {
+  const rng = mulberry32(seed);
+  const arr: Col[] = [];
+  const COUNT = 28;
+  for (let i = 0; i < COUNT; i++) {
+    const angle = (i / COUNT) * Math.PI * 2 + rng() * 0.18;
+    const r = 90 + rng() * 70;
+    const x = Math.cos(angle) * r;
+    const z = Math.sin(angle) * r;
+    const height = 18 + Math.pow(rng(), 1.6) * 60;
+    const width = 0.6 + rng() * 1.2;
+    arr.push({ pos: [x, height / 2, z], height, width });
+  }
+  return arr;
+}
+
+function ColumnInstances({ cols, color }: { cols: Col[]; color: string }) {
+  return (
+    <Instances range={cols.length} renderOrder={-1}>
+      <boxGeometry args={[1, 1, 1]} />
+      <meshBasicMaterial color={color} toneMapped={false} transparent opacity={0.55} />
+      {cols.map((c, i) => (
+        <Instance key={i} position={c.pos} scale={[c.width, c.height, c.width]} />
+      ))}
+    </Instances>
   );
 }
 

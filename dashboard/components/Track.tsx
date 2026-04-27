@@ -27,7 +27,6 @@ export function Track({ graph, onReady }: { graph: DependencyGraph; onReady?: (t
       <RoadCollider geometry={track.roadMesh} />
       <RoadVisual geometry={track.roadMesh} />
       <RoadOverlay geometry={track.roadMesh} />
-      <LaneMarkers points={track.laneMarkers} />
       <FinishLine point={track.finishPoint} />
       <SpawnGate point={track.spawnPoint} heading={track.spawnHeading} />
     </group>
@@ -160,19 +159,6 @@ function RoadCollider({ geometry }: { geometry: THREE.BufferGeometry }) {
   );
 
   return <group ref={ref as React.Ref<THREE.Group>} />;
-}
-
-function LaneMarkers({ points }: { points: THREE.Vector3[] }) {
-  return (
-    <group>
-      {points.map((p, i) => (
-        <mesh key={i} position={p}>
-          <boxGeometry args={[0.16, 0.05, 0.7]} />
-          <meshBasicMaterial color="#00d4aa" toneMapped={false} />
-        </mesh>
-      ))}
-    </group>
-  );
 }
 
 function CenterlineDashes({ dashes }: { dashes: { position: THREE.Vector3; rotation: number }[] }) {
