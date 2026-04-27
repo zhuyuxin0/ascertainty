@@ -55,6 +55,17 @@ async function get<T>(path: string): Promise<T> {
   return (await res.json()) as T;
 }
 
+async function post<T>(path: string, body: unknown = {}): Promise<T> {
+  const res = await fetch(`${API_URL}${path}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`POST ${path} → ${res.status}`);
+  return (await res.json()) as T;
+}
+
 export const api = {
   stats: () => get<Stats>("/stats"),
   bounties: (limit = 50) =>
@@ -67,4 +78,8 @@ export const api = {
     ),
   leaderboard: (limit = 20) =>
     get<{ solvers: Solver[] }>(`/leaderboard?limit=${limit}`),
+  restartRace: (id: number, duration = 180) =>
+    post<{ ok: boolean; duration: number; starts_at: number }>(
+      `/bounty/${id}/restart-race?duration=${duration}`,
+    ),
 };

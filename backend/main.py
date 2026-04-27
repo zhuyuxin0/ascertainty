@@ -284,6 +284,24 @@ async def bounty_race_events(bounty_id: int, since: int = 0) -> dict[str, Any]:
     return {"events": events, "now": now_ts}
 
 
+@app.post("/bounty/{bounty_id}/restart-race")
+async def restart_race(bounty_id: int, duration: int = 180) -> dict[str, Any]:
+    """Wipe + re-seed the demo race events with `now` as the timeline origin.
+    The dashboard's "restart race" button calls this so the user can replay
+    the visualization without dropping back into a CLI."""
+    bounty = await db.get_bounty(bounty_id)
+    if bounty is None:
+        raise HTTPException(status_code=404, detail="bounty not found")
+
+    from cli.ascertainty import _run_seed_race
+    import argparse
+    ns = argparse.Namespace(bounty_id=bounty_id, solvers=3, duration=duration)
+    rc = await _run_seed_race(ns)
+    if rc != 0:
+        raise HTTPException(status_code=500, detail="seed failed")
+    return {"ok": True, "duration": duration, "starts_at": int(time.time())}
+
+
 @app.get("/leaderboard")
 async def leaderboard(limit: int = 20) -> dict[str, Any]:
     return {"solvers": await db.leaderboard(limit=limit)}

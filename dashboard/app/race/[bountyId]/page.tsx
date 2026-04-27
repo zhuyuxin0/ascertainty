@@ -61,6 +61,20 @@ export default function RaceForBountyPage({
         <span className="font-mono text-xs uppercase tracking-widest text-cyan/80">
           bounty #{bountyId} · live race
         </span>
+        <button
+          type="button"
+          onClick={async () => {
+            try {
+              await api.restartRace(bountyId, 180);
+              window.location.reload();
+            } catch (e) {
+              console.error("restart failed", e);
+            }
+          }}
+          className="ml-4 border border-cyan/50 text-cyan px-3 py-1 font-mono text-[10px] uppercase tracking-widest hover:bg-cyan hover:text-bg transition-colors pointer-events-auto"
+        >
+          ↺ restart race
+        </button>
       </div>
 
       <HUD cars={cars} bounty={bounty} startedAt={startedAt} />
