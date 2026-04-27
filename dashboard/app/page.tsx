@@ -1,4 +1,5 @@
 import Link from "next/link";
+import SceneCanvas from "@/components/SceneCanvas";
 
 export default function HomePage() {
   return (
@@ -59,6 +60,13 @@ export default function HomePage() {
           >
             Leaderboard
           </Link>
+        </div>
+
+        <div className="mt-16">
+          <p className="font-mono text-xs uppercase tracking-[0.3em] text-white/40 mb-4">
+            ↓ live scene preview
+          </p>
+          <SceneCanvas className="w-full h-[480px] border border-line bg-bg" />
         </div>
       </section>
     </main>
