@@ -258,3 +258,23 @@ async def bounty_status(bounty_id: int) -> dict[str, Any]:
     return {"bounty": bounty, "submissions": submissions}
 
 
+@app.get("/bounty/{bounty_id}/race-events")
+async def bounty_race_events(bounty_id: int, since: int = 0) -> dict[str, Any]:
+    """Stream of race events the dashboard plays back to drive the cars.
+
+    `since` is a unix timestamp (seconds); the dashboard polls with the
+    largest `ts` it has seen so the response stays small as the race
+    progresses.
+    """
+    bounty = await db.get_bounty(bounty_id)
+    if bounty is None:
+        raise HTTPException(status_code=404, detail="bounty not found")
+    events = await db.race_events_for_bounty(bounty_id, since_ts=since)
+    return {"events": events, "now": int(time.time())}
+
+
+@app.get("/leaderboard")
+async def leaderboard(limit: int = 20) -> dict[str, Any]:
+    return {"solvers": await db.leaderboard(limit=limit)}
+
+

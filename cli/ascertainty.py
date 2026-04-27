@@ -15,6 +15,7 @@ import asyncio
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -53,6 +54,17 @@ def _build_parser() -> argparse.ArgumentParser:
         "bootstrap",
         help="one-time setup: mint MockUSDC to operator + approve BountyFactory",
     )
+
+    sr = sub.add_parser(
+        "seed-race",
+        help="insert a 60s scripted race into race_events for the dashboard demo",
+    )
+    sr.add_argument("bounty_id", type=int, help="DB id of the bounty to seed events for")
+    sr.add_argument("--solvers", type=int, default=3, choices=[2, 3],
+                    help="number of solver cars (2 or 3, default 3)")
+    sr.add_argument("--duration", type=int, default=60,
+                    help="seconds of race time to script (default 60)")
+
     return p
 
 
@@ -144,6 +156,92 @@ async def _run_bootstrap(args: argparse.Namespace) -> int:
     return 0
 
 
+async def _run_seed_race(args: argparse.Namespace) -> int:
+    load_dotenv()
+    from backend import db
+
+    bounty = await db.get_bounty(args.bounty_id)
+    if bounty is None:
+        print(f"error: bounty {args.bounty_id} not found", file=sys.stderr)
+        return 1
+
+    now = int(time.time())
+    n = args.solvers
+    duration = args.duration
+
+    # Three solver wallets — distinct so the dashboard can color them differently.
+    solvers = [
+        "0xc01D000000000000000000000000000000000001",  # finisher
+        "0xc01D000000000000000000000000000000000002",  # crashes mid-way
+        "0xc01D000000000000000000000000000000000003",  # backtracks then finishes
+    ][:n]
+
+    inserted = 0
+
+    # 10 progress checkpoints per solver, evenly spaced across `duration`
+    for solver_idx, solver in enumerate(solvers):
+        for step in range(1, 11):
+            ts = now + int(step * duration / 10)
+            # Slight stagger so cars are interestingly out of sync
+            ts += solver_idx * 1
+            await db.insert_race_event(
+                bounty_id=args.bounty_id,
+                solver_address=solver,
+                event_type="progress",
+                data_json=json.dumps({"checkpoint": step, "fraction": step / 10}),
+                ts=ts,
+            )
+            inserted += 1
+
+    # Solver 1: backtracks at step 4 then catches up
+    if n >= 3:
+        await db.insert_race_event(
+            bounty_id=args.bounty_id,
+            solver_address=solvers[2],
+            event_type="backtrack",
+            data_json=json.dumps({"to_checkpoint": 3}),
+            ts=now + int(4 * duration / 10) + 1,
+        )
+        inserted += 1
+
+    # Solver 1: pit stop after backtrack
+    if n >= 3:
+        await db.insert_race_event(
+            bounty_id=args.bounty_id,
+            solver_address=solvers[2],
+            event_type="pit",
+            data_json=json.dumps({"reason": "refactor"}),
+            ts=now + int(5 * duration / 10),
+        )
+        inserted += 1
+
+    # Solver 2: crashes at ~70%
+    if n >= 2:
+        await db.insert_race_event(
+            bounty_id=args.bounty_id,
+            solver_address=solvers[1],
+            event_type="crash",
+            data_json=json.dumps({"at_checkpoint": 7, "reason": "kernel rejected axiom"}),
+            ts=now + int(7 * duration / 10) + 2,
+        )
+        inserted += 1
+
+    # Solver 0: finishes
+    await db.insert_race_event(
+        bounty_id=args.bounty_id,
+        solver_address=solvers[0],
+        event_type="finish",
+        data_json=json.dumps({"final_time_seconds": duration}),
+        ts=now + duration,
+    )
+    inserted += 1
+
+    print(f"inserted {inserted} race events for bounty {args.bounty_id} ({n} solvers, {duration}s)")
+    print(f"first event at: {now}, last at: {now + duration}")
+    print(f"open dashboard: http://localhost:3000/race/{args.bounty_id}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
@@ -151,6 +249,8 @@ def main(argv: list[str] | None = None) -> int:
         return asyncio.run(_run_verify(args))
     if args.cmd == "bootstrap":
         return asyncio.run(_run_bootstrap(args))
+    if args.cmd == "seed-race":
+        return asyncio.run(_run_seed_race(args))
     parser.print_help()
     return 1
 

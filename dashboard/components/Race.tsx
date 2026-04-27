@@ -3,25 +3,31 @@
 import { Canvas } from "@react-three/fiber";
 import { Physics, usePlane } from "@react-three/cannon";
 import { Stars } from "@react-three/drei";
-import { Suspense, useRef, useState } from "react";
+import { Suspense, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 
 import { Vehicle } from "./Vehicle";
+import { RaceCar } from "./RaceCar";
 import { Track } from "./Track";
-import { MOCK_GRAPHS } from "@/lib/mockData";
+import { MOCK_GRAPHS, pickGraphForBounty } from "@/lib/mockData";
+import { useRaceEngine } from "@/lib/raceEngine";
 import type { TrackGeometry } from "@/lib/trackMapping";
 
-/**
- * Race scene: Physics provider + procedural track + at least one
- * controllable vehicle spawned at the track start. Multiple cars +
- * camera rig + HUD compose into this in later sub-tasks.
- */
-export default function Race({ graphKey = "sort" }: { graphKey?: keyof typeof MOCK_GRAPHS }) {
-  const [track, setTrack] = useState<TrackGeometry | null>(null);
-  const graph = MOCK_GRAPHS[graphKey] ?? MOCK_GRAPHS.sort;
-  const spawn: [number, number, number] = track
-    ? [track.spawnPoint.x, track.spawnPoint.y + 1.4, track.spawnPoint.z]
-    : [0, 1.4, 0];
+type RaceProps = {
+  /** "test" — single physics-controllable car (WASD).
+   *  "replay" — kinematic cars driven by /bounty/{id}/race-events polling. */
+  mode?: "test" | "replay";
+  graphKey?: keyof typeof MOCK_GRAPHS;
+  bountyId?: number;
+};
+
+export default function Race({ mode = "test", graphKey, bountyId }: RaceProps) {
+  const graph = useMemo(() => {
+    if (mode === "replay" && bountyId !== undefined) return pickGraphForBounty(bountyId);
+    if (graphKey) return MOCK_GRAPHS[graphKey];
+    return MOCK_GRAPHS.sort;
+  }, [mode, graphKey, bountyId]);
+
   return (
     <Canvas
       shadows
@@ -61,18 +67,53 @@ export default function Race({ graphKey = "sort" }: { graphKey?: keyof typeof MO
           saturation={0}
           speed={0.3}
         />
-        <Physics
-          broadphase="SAP"
-          gravity={[0, -9.81, 0]}
-          allowSleep={false}
-          defaultContactMaterial={{ friction: 0.5, restitution: 0.05 }}
-        >
-          <Ground />
-          <Track graph={graph} onReady={setTrack} />
-          {track && <Vehicle key={graphKey} position={spawn} color="#00d4aa" />}
-        </Physics>
+        {mode === "test" ? (
+          <TestSceneContents graph={graph} />
+        ) : (
+          <ReplaySceneContents graph={graph} bountyId={bountyId!} />
+        )}
       </Suspense>
     </Canvas>
+  );
+}
+
+function TestSceneContents({ graph }: { graph: ReturnType<typeof pickGraphForBounty> }) {
+  const [track, setTrack] = useState<TrackGeometry | null>(null);
+  const spawn: [number, number, number] = track
+    ? [track.spawnPoint.x, track.spawnPoint.y + 1.4, track.spawnPoint.z]
+    : [0, 1.4, 0];
+  return (
+    <Physics
+      broadphase="SAP"
+      gravity={[0, -9.81, 0]}
+      allowSleep={false}
+      defaultContactMaterial={{ friction: 0.5, restitution: 0.05 }}
+    >
+      <Ground />
+      <Track graph={graph} onReady={setTrack} />
+      {track && <Vehicle position={spawn} color="#00d4aa" />}
+    </Physics>
+  );
+}
+
+function ReplaySceneContents({ graph, bountyId }: { graph: ReturnType<typeof pickGraphForBounty>; bountyId: number }) {
+  const [track, setTrack] = useState<TrackGeometry | null>(null);
+  const { cars } = useRaceEngine(bountyId);
+  const carEntries = Object.values(cars);
+
+  return (
+    <Physics
+      broadphase="SAP"
+      gravity={[0, -9.81, 0]}
+      allowSleep
+    >
+      <Ground />
+      <Track graph={graph} onReady={setTrack} />
+      {track &&
+        carEntries.map((car, i) => (
+          <RaceCar key={car.solver} car={car} track={track} index={i} />
+        ))}
+    </Physics>
   );
 }
 

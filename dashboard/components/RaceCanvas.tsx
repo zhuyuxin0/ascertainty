@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import type { ComponentProps } from "react";
 
 const Race = dynamic(() => import("./Race"), {
   ssr: false,
@@ -11,10 +12,15 @@ const Race = dynamic(() => import("./Race"), {
   ),
 });
 
-export default function RaceCanvas({ className }: { className?: string }) {
+type RaceProps = ComponentProps<typeof Race>;
+
+export default function RaceCanvas({
+  className,
+  ...raceProps
+}: { className?: string } & RaceProps) {
   return (
     <div className={className ?? "w-full h-screen"}>
-      <Race />
+      <Race {...raceProps} />
     </div>
   );
 }
