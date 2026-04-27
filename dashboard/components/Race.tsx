@@ -2,7 +2,7 @@
 
 import { Canvas } from "@react-three/fiber";
 import { Physics, usePlane } from "@react-three/cannon";
-import { Stars } from "@react-three/drei";
+import { Stars, Sparkles, Environment } from "@react-three/drei";
 import { Suspense, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 
@@ -37,40 +37,61 @@ export default function Race({ mode = "test", graphKey, bountyId, onState }: Rac
     <Canvas
       shadows
       dpr={[1, 2]}
-      gl={{ antialias: true, powerPreference: "high-performance" }}
-      camera={{ position: [0, 14, 18], fov: 45, near: 0.1, far: 200 }}
+      gl={{
+        antialias: true,
+        powerPreference: "high-performance",
+        toneMapping: THREE.ACESFilmicToneMapping,
+        toneMappingExposure: 1.1,
+      }}
+      camera={{ position: [0, 6, 12], fov: 42, near: 0.1, far: 240 }}
       style={{ background: "#050507" }}
     >
-      <fog attach="fog" args={["#050507", 30, 100]} />
-      <ambientLight intensity={0.2} color="#7088a0" />
+      <color attach="background" args={["#050507"]} />
+      <fog attach="fog" args={["#050507", 14, 70]} />
+
+      {/* low ambient — let directional + rim do the work */}
+      <ambientLight intensity={0.12} color="#5b6b80" />
+
+      {/* key light — low angle, warm-cold split */}
       <directionalLight
-        position={[20, 30, 12]}
-        intensity={0.8}
-        color="#ffffff"
+        position={[16, 24, 10]}
+        intensity={0.85}
+        color="#cfd8e6"
         castShadow
         shadow-mapSize-width={2048}
         shadow-mapSize-height={2048}
-        shadow-camera-left={-30}
-        shadow-camera-right={30}
-        shadow-camera-top={30}
-        shadow-camera-bottom={-30}
+        shadow-camera-left={-40}
+        shadow-camera-right={40}
+        shadow-camera-top={40}
+        shadow-camera-bottom={-40}
+        shadow-bias={-0.0005}
       />
-      <spotLight
-        position={[-20, 18, -10]}
-        intensity={0.6}
-        angle={0.7}
-        penumbra={0.8}
-        color="#00d4aa"
-      />
+
+      {/* cyan rim from behind — silhouettes pop */}
+      <directionalLight position={[-10, 12, -20]} intensity={0.45} color="#00d4aa" />
+
+      {/* amber accent — warm punctuation */}
+      <pointLight position={[0, 10, 0]} intensity={0.4} color="#ff6b35" distance={40} decay={1.6} />
+
       <Suspense fallback={null}>
         <Stars
-          radius={120}
-          depth={70}
-          count={2500}
-          factor={3}
+          radius={140}
+          depth={80}
+          count={1800}
+          factor={2.5}
           fade
           saturation={0}
-          speed={0.3}
+          speed={0.25}
+        />
+        {/* atmospheric volumetric particles drifting through scene */}
+        <Sparkles
+          count={120}
+          scale={[80, 18, 80]}
+          size={2}
+          speed={0.25}
+          opacity={0.55}
+          color="#00d4aa"
+          noise={0.2}
         />
         {mode === "test" ? (
           <TestSceneContents graph={graph} />
@@ -95,7 +116,8 @@ function TestSceneContents({ graph }: { graph: ReturnType<typeof pickGraphForBou
       allowSleep={false}
       defaultContactMaterial={{ friction: 0.5, restitution: 0.05 }}
     >
-      <Ground />
+      <GroundCollider />
+      <DarkFloor />
       <Track graph={graph} onReady={setTrack} />
       {track && <Vehicle position={spawn} color="#00d4aa" />}
     </Physics>
@@ -125,7 +147,8 @@ function ReplaySceneContents({
     <>
       <CameraRig cars={carEntries} track={track} />
       <Physics broadphase="SAP" gravity={[0, -9.81, 0]} allowSleep>
-        <Ground />
+        <GroundCollider />
+        <DarkFloor />
         <Track graph={graph} onReady={setTrack} />
         {track &&
           carEntries.map((car, i) => (
@@ -136,19 +159,28 @@ function ReplaySceneContents({
   );
 }
 
-function Ground() {
+/** Invisible physics floor — keeps RaycastVehicle suspension from
+ *  punching through if the trimesh road has gaps. Visual is handled
+ *  separately by `DarkFloor` so we can fade it into the fog. */
+function GroundCollider() {
   const [ref] = usePlane(
     () => ({
       rotation: [-Math.PI / 2, 0, 0],
       type: "Static",
-      material: { friction: 0.6 },
+      material: { friction: 0.4 },
     }),
     useRef<THREE.Object3D>(null),
   );
+  return <mesh ref={ref as React.Ref<THREE.Mesh>} visible={false} />;
+}
+
+/** Visual-only floor that catches shadows + dissolves into fog. No
+ *  hard "edge" of the world that breaks immersion. */
+function DarkFloor() {
   return (
-    <mesh ref={ref as React.Ref<THREE.Mesh>} receiveShadow>
-      <planeGeometry args={[200, 200]} />
-      <meshStandardMaterial color="#0a0a10" roughness={0.95} metalness={0.05} />
+    <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.001, 0]}>
+      <circleGeometry args={[110, 80]} />
+      <meshStandardMaterial color="#06060a" roughness={1} metalness={0} />
     </mesh>
   );
 }

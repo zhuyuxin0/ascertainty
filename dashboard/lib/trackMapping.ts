@@ -35,7 +35,8 @@ export type DependencyGraph = {
 export type TrackGeometry = {
   centerlinePoints: THREE.Vector3[];     // ordered, evenly-spaced
   roadMesh: THREE.BufferGeometry;        // ribbon along the spline
-  laneMarkers: THREE.Vector3[];          // glowing dot positions
+  laneMarkers: THREE.Vector3[];          // edge marker positions (left+right pairs)
+  centerlineDashes: { position: THREE.Vector3; rotation: number }[]; // dashed midline
   spawnPoint: THREE.Vector3;
   spawnHeading: THREE.Vector3;           // unit vector pointing along the start
   finishPoint: THREE.Vector3;
@@ -69,6 +70,7 @@ export function buildTrack(graph: DependencyGraph): TrackGeometry {
 
   const roadMesh = buildRoadGeometry(centerlinePoints, ROAD_WIDTH);
   const laneMarkers = sampleLaneMarkers(centerlinePoints, MARKER_SPACING, ROAD_WIDTH);
+  const centerlineDashes = sampleCenterlineDashes(centerlinePoints, 3.5);
 
   const spawnPoint = centerlinePoints[0];
   const finishPoint = centerlinePoints[centerlinePoints.length - 1];
@@ -78,6 +80,7 @@ export function buildTrack(graph: DependencyGraph): TrackGeometry {
     centerlinePoints,
     roadMesh,
     laneMarkers,
+    centerlineDashes,
     spawnPoint,
     spawnHeading,
     finishPoint,
@@ -159,6 +162,30 @@ function buildRoadGeometry(
   geom.setAttribute("normal", new THREE.Float32BufferAttribute(normals, 3));
   geom.setIndex(indices);
   return geom;
+}
+
+function sampleCenterlineDashes(
+  centerline: THREE.Vector3[],
+  spacing: number,
+): { position: THREE.Vector3; rotation: number }[] {
+  const dashes: { position: THREE.Vector3; rotation: number }[] = [];
+  let accumulated = 0;
+  for (let i = 1; i < centerline.length; i++) {
+    const seg = centerline[i].clone().sub(centerline[i - 1]).length();
+    accumulated += seg;
+    if (accumulated >= spacing) {
+      const cur = centerline[i];
+      const next = centerline[Math.min(i + 1, centerline.length - 1)];
+      const heading = next.clone().sub(cur).normalize();
+      const rot = Math.atan2(heading.x, heading.z);
+      dashes.push({
+        position: cur.clone().add(new THREE.Vector3(0, 0.025, 0)),
+        rotation: rot,
+      });
+      accumulated = 0;
+    }
+  }
+  return dashes;
 }
 
 function sampleLaneMarkers(

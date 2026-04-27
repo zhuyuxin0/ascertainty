@@ -1,6 +1,7 @@
 "use client";
 
 import { useFrame } from "@react-three/fiber";
+import { Trail } from "@react-three/drei";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
 
@@ -9,8 +10,9 @@ import type { TrackGeometry } from "@/lib/trackMapping";
 
 /**
  * Visual-only car positioned by interpolating along the track centerline
- * by `car.fraction`. Used for race replay (event-driven). Physics-based
- * Vehicle.tsx is kept for the /race/test playground page only.
+ * by `car.fraction`. Used for race replay (event-driven). The body is a
+ * tapered extruded shape — wider at the back, sharper at the front,
+ * matching the silhouette of a low-poly arcade racer.
  */
 export function RaceCar({
   car,
@@ -22,19 +24,17 @@ export function RaceCar({
   index: number;
 }) {
   const groupRef = useRef<THREE.Group>(null);
+  const trailAnchor = useRef<THREE.Mesh>(null);
   const targetFraction = useRef(car.fraction);
   const currentFraction = useRef(car.fraction);
-
-  // Update target whenever car.fraction changes
   targetFraction.current = car.fraction;
 
-  // Pre-compute lateral offset so multiple cars don't overlap
-  const lateralOffset = useMemo(() => (index - 1) * 1.6, [index]);
+  const lateralOffset = useMemo(() => (index - 1) * 1.7, [index]);
+  const bodyGeometry = useMemo(() => buildCarBody(), []);
 
   useFrame((state, delta) => {
     if (!groupRef.current) return;
-    // Smoothly approach the target fraction
-    const easing = car.status === "crashed" ? 0 : 2.0;
+    const easing = car.status === "crashed" ? 0 : 2.4;
     currentFraction.current = THREE.MathUtils.lerp(
       currentFraction.current,
       targetFraction.current,
@@ -48,73 +48,165 @@ export function RaceCar({
     const a = track.centerlinePoints[i];
     const b = track.centerlinePoints[Math.min(i + 1, track.centerlinePoints.length - 1)];
     const pos = a.clone().lerp(b, t);
-
-    // tangent for heading
-    const next =
-      track.centerlinePoints[Math.min(i + 2, track.centerlinePoints.length - 1)];
+    const next = track.centerlinePoints[Math.min(i + 2, track.centerlinePoints.length - 1)];
     const heading = next.clone().sub(a).normalize();
 
-    // perpendicular for lateral offset (left/right shift per car index)
     const up = new THREE.Vector3(0, 1, 0);
     const side = heading.clone().cross(up).normalize();
     pos.addScaledVector(side, lateralOffset);
+    pos.y += 0.42;
 
-    pos.y += 0.45; // ride height
-
-    // Crash: tumble down + spin out
     if (car.status === "crashed") {
-      pos.y -= 0.35;
-      groupRef.current.rotation.z += delta * 1.2;
+      pos.y -= 0.3;
+      groupRef.current.rotation.z += delta * 1.6;
+      groupRef.current.rotation.x += delta * 0.4;
       groupRef.current.position.copy(pos);
       return;
     }
 
-    // Pitting: dim opacity (visual cue) — tilt down slightly
-    const tiltAmount = car.status === "pitting" ? -0.1 : 0;
-    const wobble = car.wobble * Math.sin(state.clock.elapsedTime * 30) * 0.15;
+    const tiltAmount = car.status === "pitting" ? -0.12 : 0;
+    const wobble = car.wobble * Math.sin(state.clock.elapsedTime * 30) * 0.18;
+    const bounce = Math.sin(state.clock.elapsedTime * 8 + index) * 0.015;
 
     groupRef.current.position.copy(pos);
+    groupRef.current.position.y += bounce;
     const yaw = Math.atan2(heading.x, heading.z);
     groupRef.current.rotation.set(tiltAmount, yaw, wobble);
   });
 
-  // Finish flash
   const isFinished = car.status === "finished";
+  const isMoving = car.status === "racing" || car.status === "pitting";
+  const opacity = car.status === "pitting" ? 0.75 : 1;
 
   return (
     <group ref={groupRef}>
-      {/* chassis */}
-      <mesh castShadow>
-        <boxGeometry args={[1.2, 0.4, 2.6]} />
-        <meshStandardMaterial
-          color="#0a0a10"
+      {/* dust trail anchor — sits at the back of the car */}
+      {isMoving && (
+        <Trail
+          width={1.4}
+          length={4}
+          color={car.color}
+          attenuation={(t) => t * t}
+          decay={3}
+          local={false}
+          stride={0}
+          interval={1}
+        >
+          <mesh ref={trailAnchor} position={[0, 0.12, -1.4]} visible={false}>
+            <sphereGeometry args={[0.05, 6, 6]} />
+            <meshBasicMaterial color={car.color} />
+          </mesh>
+        </Trail>
+      )}
+
+      {/* main body — tapered extrusion */}
+      <mesh geometry={bodyGeometry} castShadow position={[0, 0.04, 0]}>
+        <meshPhysicalMaterial
+          color="#08080d"
           emissive={car.color}
-          emissiveIntensity={isFinished ? 1.5 : 0.5}
-          metalness={0.7}
-          roughness={0.3}
-          opacity={car.status === "pitting" ? 0.7 : 1}
+          emissiveIntensity={isFinished ? 1.6 : 0.55}
+          metalness={0.85}
+          roughness={0.18}
+          clearcoat={0.6}
+          clearcoatRoughness={0.2}
           transparent={car.status === "pitting"}
+          opacity={opacity}
         />
       </mesh>
-      {/* glowing accent strip on top */}
-      <mesh position={[0, 0.22, 0]}>
-        <boxGeometry args={[0.25, 0.04, 1.8]} />
+
+      {/* glowing accent strip on top spine */}
+      <mesh position={[0, 0.4, 0.1]}>
+        <boxGeometry args={[0.18, 0.04, 1.6]} />
         <meshBasicMaterial color={car.color} toneMapped={false} />
       </mesh>
-      {/* tail glow / position light */}
-      <mesh position={[0, 0.1, -1.35]}>
-        <boxGeometry args={[1.0, 0.12, 0.05]} />
+
+      {/* headlights — two glowing quads at the front */}
+      {[-0.45, 0.45].map((x) => (
+        <mesh key={x} position={[x, 0.18, 1.32]}>
+          <boxGeometry args={[0.32, 0.12, 0.06]} />
+          <meshBasicMaterial color="#ffffff" toneMapped={false} />
+        </mesh>
+      ))}
+
+      {/* tail glow strip — full-width brake light */}
+      <mesh position={[0, 0.18, -1.36]}>
+        <boxGeometry args={[1.18, 0.16, 0.06]} />
         <meshBasicMaterial color={car.color} toneMapped={false} />
       </mesh>
-      {/* simple wheels (purely cosmetic — no physics) */}
-      {[-0.65, 0.65].map((x) =>
-        [-0.9, 0.9].map((z) => (
-          <mesh key={`${x},${z}`} position={[x, -0.12, z]} rotation={[0, 0, Math.PI / 2]} castShadow>
-            <cylinderGeometry args={[0.3, 0.3, 0.18, 14]} />
-            <meshStandardMaterial color="#181820" roughness={0.7} />
-          </mesh>
+
+      {/* underglow — soft band of light beneath the chassis */}
+      <mesh position={[0, -0.18, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[1.4, 2.6]} />
+        <meshBasicMaterial color={car.color} transparent opacity={0.18} toneMapped={false} />
+      </mesh>
+
+      {/* wheels — beveled cylinders, slightly larger */}
+      {[-0.7, 0.7].map((x) =>
+        [-0.95, 0.95].map((z) => (
+          <Wheel key={`${x},${z}`} position={[x, -0.12, z]} />
         )),
+      )}
+
+      {/* finished: vertical light beam from the car */}
+      {isFinished && (
+        <mesh position={[0, 6, 0]}>
+          <boxGeometry args={[0.4, 12, 0.4]} />
+          <meshBasicMaterial color={car.color} transparent opacity={0.35} toneMapped={false} />
+        </mesh>
       )}
     </group>
   );
+}
+
+function Wheel({ position }: { position: [number, number, number] }) {
+  return (
+    <group position={position} rotation={[0, 0, Math.PI / 2]}>
+      <mesh castShadow>
+        <cylinderGeometry args={[0.32, 0.32, 0.22, 18]} />
+        <meshStandardMaterial color="#0c0c12" roughness={0.55} metalness={0.3} />
+      </mesh>
+      {/* hub accent */}
+      <mesh position={[0, 0, 0]}>
+        <cylinderGeometry args={[0.14, 0.14, 0.24, 12]} />
+        <meshStandardMaterial color="#1a1a22" roughness={0.4} metalness={0.6} />
+      </mesh>
+    </group>
+  );
+}
+
+/**
+ * Tapered car body using THREE.Shape + ExtrudeGeometry.
+ * Top-down outline: wider at the rear, narrower at the front, with
+ * cut corners. Extruded vertically with bevels for soft edges.
+ */
+function buildCarBody(): THREE.BufferGeometry {
+  const shape = new THREE.Shape();
+  // Outline (top-down view, +z is forward)
+  // start back-left, go forward
+  shape.moveTo(-0.6, -1.3);
+  shape.lineTo(0.6, -1.3);
+  shape.lineTo(0.7, -0.9);
+  shape.lineTo(0.7, 0.6);
+  shape.lineTo(0.55, 1.1);
+  shape.lineTo(0.3, 1.4);
+  shape.lineTo(-0.3, 1.4);
+  shape.lineTo(-0.55, 1.1);
+  shape.lineTo(-0.7, 0.6);
+  shape.lineTo(-0.7, -0.9);
+  shape.lineTo(-0.6, -1.3);
+
+  const geom = new THREE.ExtrudeGeometry(shape, {
+    depth: 0.5,
+    bevelEnabled: true,
+    bevelSegments: 4,
+    bevelSize: 0.06,
+    bevelThickness: 0.06,
+    curveSegments: 12,
+  });
+  // Lay flat (extrude defaults along +z; we want height in +y)
+  geom.rotateX(-Math.PI / 2);
+  // Center vertically
+  geom.translate(0, 0, 0);
+  geom.computeVertexNormals();
+  return geom;
 }

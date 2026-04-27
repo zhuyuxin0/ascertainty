@@ -48,16 +48,19 @@ export default function RaceForBountyPage({
         }}
       />
 
-      <div className="absolute top-0 left-0 right-0 z-10 px-6 py-4 flex items-center justify-between pointer-events-none">
+      <div className="absolute top-4 left-6 z-10 flex items-center gap-4 pointer-events-none">
         <Link
           href="/bounties"
           className="font-mono text-xs uppercase tracking-widest text-white/60 hover:text-cyan pointer-events-auto"
         >
           ← bounties
         </Link>
-        <div className="font-mono text-xs uppercase tracking-widest text-cyan/80">
+        <span className="font-mono text-xs uppercase tracking-widest text-white/30">
+          /
+        </span>
+        <span className="font-mono text-xs uppercase tracking-widest text-cyan/80">
           bounty #{bountyId} · live race
-        </div>
+        </span>
       </div>
 
       <HUD cars={cars} bounty={bounty} startedAt={startedAt} />

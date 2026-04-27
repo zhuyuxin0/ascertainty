@@ -42,9 +42,10 @@ export function CameraRig({
 
   useFrame((state, delta) => {
     if (!track || cars.length === 0) {
-      // No race yet — gentle orbit
+      // No race yet — gentle orbit at lower altitude with sway
       const t = state.clock.elapsedTime * 0.15;
-      camera.position.set(Math.cos(t) * 24, 14, Math.sin(t) * 24);
+      const sway = Math.sin(state.clock.elapsedTime * 0.4) * 0.5;
+      camera.position.set(Math.cos(t) * 22, 7 + sway, Math.sin(t) * 22);
       camera.lookAt(0, 1, 0);
       return;
     }
@@ -59,46 +60,49 @@ export function CameraRig({
     target.current.y += 0.5;
 
     const heading = b.clone().sub(a).normalize();
+    const sway = Math.sin(state.clock.elapsedTime * 1.2) * 0.06;
+    const breathe = Math.sin(state.clock.elapsedTime * 0.7) * 0.15;
 
     switch (modeRef.current) {
       case "follow": {
-        // chase cam: behind + above the lead
+        // low chase cam — closer, lower, faster catch-up
         tmp.current
           .copy(target.current)
-          .addScaledVector(heading, -8)
-          .add(new THREE.Vector3(0, 4.5, 0));
-        camera.position.lerp(tmp.current, Math.min(1, delta * 3));
+          .addScaledVector(heading, -6)
+          .add(new THREE.Vector3(sway, 2.4 + breathe * 0.3, 0));
+        camera.position.lerp(tmp.current, Math.min(1, delta * 5));
+        target.current.y += 0.3;
         camera.lookAt(target.current);
         break;
       }
       case "orbit": {
-        const t = state.clock.elapsedTime * 0.2;
+        const t = state.clock.elapsedTime * 0.18;
         tmp.current.copy(target.current).add(
-          new THREE.Vector3(Math.cos(t) * 14, 8, Math.sin(t) * 14),
+          new THREE.Vector3(Math.cos(t) * 12, 5.5 + breathe, Math.sin(t) * 12),
         );
-        camera.position.lerp(tmp.current, Math.min(1, delta * 2));
+        camera.position.lerp(tmp.current, Math.min(1, delta * 2.5));
         camera.lookAt(target.current);
         break;
       }
       case "cinematic": {
-        // low-angle dramatic shot from the side
+        // very low-angle side shot, almost grazing the road
         const side = new THREE.Vector3(0, 1, 0).cross(heading).normalize();
         tmp.current
           .copy(target.current)
-          .addScaledVector(side, 10)
-          .addScaledVector(heading, -2)
-          .add(new THREE.Vector3(0, 1.6, 0));
-        camera.position.lerp(tmp.current, Math.min(1, delta * 2));
+          .addScaledVector(side, 7)
+          .addScaledVector(heading, -1.2)
+          .add(new THREE.Vector3(0, 0.9 + breathe * 0.2, 0));
+        camera.position.lerp(tmp.current, Math.min(1, delta * 2.5));
         camera.lookAt(target.current);
         break;
       }
       case "overview": {
-        // bird's-eye over the whole track
+        // bird's-eye, slightly tilted (not pure top-down)
         const center = new THREE.Vector3();
         for (const p of track.centerlinePoints) center.add(p);
         center.divideScalar(track.centerlinePoints.length);
-        tmp.current.copy(center).add(new THREE.Vector3(0, 38, 0));
-        camera.position.lerp(tmp.current, Math.min(1, delta * 1.5));
+        tmp.current.copy(center).add(new THREE.Vector3(0, 32, 12 + breathe));
+        camera.position.lerp(tmp.current, Math.min(1, delta * 1.8));
         camera.lookAt(center);
         break;
       }

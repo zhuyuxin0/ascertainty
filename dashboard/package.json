@@ -10,9 +10,9 @@
   },
   "dependencies": {
     "@react-three/cannon": "^6.6.0",
-    "@react-three/drei": "^10.7.7",
-    "@react-three/fiber": "^9.6.0",
-    "@react-three/postprocessing": "^3.0.4",
+    "@react-three/drei": "^9.122.0",
+    "@react-three/fiber": "^8.18.0",
+    "@react-three/postprocessing": "^2.19.1",
     "next": "14.2.18",
     "postprocessing": "^6.39.1",
     "react": "18.3.1",
