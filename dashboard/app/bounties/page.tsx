@@ -49,9 +49,12 @@ export default async function BountiesPage() {
               <span className="text-white/40">verifiable claims open for solving</span>
             </h1>
           </div>
-          <span className="font-mono text-[10px] uppercase tracking-widest text-white/40">
-            ↻ refreshes on load
-          </span>
+          <Link
+            href="/bounties/new"
+            className="border border-cyan text-cyan px-5 py-2 font-mono text-xs uppercase tracking-widest hover:bg-cyan hover:text-bg transition-colors"
+          >
+            + new bounty
+          </Link>
         </div>
 
         {error ? (
