@@ -1,8 +1,10 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
+import { useFrame } from "@react-three/fiber";
 import { useTrimesh } from "@react-three/cannon";
 import { MeshReflectorMaterial } from "@react-three/drei";
+import CustomShaderMaterial from "three-custom-shader-material";
 import * as THREE from "three";
 
 import { buildTrack, type DependencyGraph, type TrackGeometry } from "@/lib/trackMapping";
@@ -24,8 +26,8 @@ export function Track({ graph, onReady }: { graph: DependencyGraph; onReady?: (t
     <group>
       <RoadCollider geometry={track.roadMesh} />
       <RoadVisual geometry={track.roadMesh} />
+      <RoadOverlay geometry={track.roadMesh} />
       <LaneMarkers points={track.laneMarkers} />
-      <CenterlineDashes dashes={track.centerlineDashes} />
       <FinishLine point={track.finishPoint} />
       <SpawnGate point={track.spawnPoint} heading={track.spawnHeading} />
     </group>
@@ -36,19 +38,102 @@ function RoadVisual({ geometry }: { geometry: THREE.BufferGeometry }) {
   return (
     <mesh receiveShadow geometry={geometry}>
       <MeshReflectorMaterial
-        color="#0c0c14"
-        metalness={0.6}
-        roughness={0.55}
-        blur={[400, 80]}
-        mixBlur={1.2}
-        mixStrength={1.5}
+        color="#0a0a12"
+        metalness={0.5}
+        roughness={0.6}
+        blur={[300, 100]}
+        mixBlur={1.0}
+        mixStrength={0.8}
         mixContrast={1.0}
         resolution={512}
-        mirror={0.6}
-        depthScale={0.4}
-        minDepthThreshold={0.4}
-        maxDepthThreshold={1.4}
+        mirror={0}
         side={THREE.DoubleSide}
+      />
+    </mesh>
+  );
+}
+
+/**
+ * Overlay layer 0.01 units above the road surface. Adds scrolling
+ * dashed centerline + fresnel edge glow via three-custom-shader-material
+ * patching MeshStandardMaterial. Both effects write to csm_Emissive so
+ * the EffectComposer's bloom catches the glow without lighting up the
+ * dark asphalt itself.
+ */
+function RoadOverlay({ geometry }: { geometry: THREE.BufferGeometry }) {
+  const uniformsRef = useRef({
+    uTime: { value: 0 },
+    uScrollSpeed: { value: 0.6 },
+  });
+
+  useFrame((_, delta) => {
+    uniformsRef.current.uTime.value += delta;
+  });
+
+  // Push the overlay geometry slightly upward to avoid z-fighting
+  const lifted = useMemo(() => {
+    const g = geometry.clone();
+    const pos = g.getAttribute("position") as THREE.BufferAttribute;
+    for (let i = 0; i < pos.count; i++) {
+      pos.setY(i, pos.getY(i) + 0.012);
+    }
+    pos.needsUpdate = true;
+    return g;
+  }, [geometry]);
+
+  return (
+    <mesh geometry={lifted}>
+      <CustomShaderMaterial
+        baseMaterial={THREE.MeshStandardMaterial}
+        transparent
+        side={THREE.DoubleSide}
+        color="#000000"
+        metalness={0}
+        roughness={1}
+        uniforms={uniformsRef.current}
+        vertexShader={/* glsl */ `
+          varying vec2 vCustomUv;
+          void main() {
+            vCustomUv = uv;
+          }
+        `}
+        fragmentShader={/* glsl */ `
+          uniform float uTime;
+          uniform float uScrollSpeed;
+          varying vec2 vCustomUv;
+
+          void main() {
+            // u: 0 = left edge, 1 = right edge
+            // v: 0 = track start, 1 = track end
+            float u = vCustomUv.x;
+            float v = vCustomUv.y;
+
+            // Fresnel-style edge glow on the road sides
+            float edgeDist = abs(u - 0.5) * 2.0; // 0 at center, 1 at edge
+            float edgeGlow = pow(smoothstep(0.55, 1.0, edgeDist), 1.4);
+
+            // Scrolling dashed centerline (only in the middle ~10% of road width)
+            float centerStrip = 1.0 - smoothstep(0.04, 0.08, abs(u - 0.5));
+            float dashCycle = fract(v * 80.0 - uTime * uScrollSpeed);
+            float dash = step(0.45, dashCycle) * (1.0 - step(0.92, dashCycle));
+            float dashGlow = centerStrip * dash;
+
+            // Combine — cyan brand color
+            vec3 cyan = vec3(0.0, 0.83, 0.67);
+            vec3 amber = vec3(1.0, 0.42, 0.21);
+
+            float totalGlow = edgeGlow + dashGlow * 0.9;
+            vec3 emissive = cyan * totalGlow;
+
+            // Soft amber tint at the very edges so each side reads as warm/cool
+            emissive += amber * pow(smoothstep(0.92, 1.0, edgeDist), 2.0) * 0.5;
+
+            float alpha = clamp(totalGlow + edgeGlow * 0.3, 0.0, 1.0);
+
+            csm_DiffuseColor = vec4(0.0, 0.0, 0.0, alpha);
+            csm_Emissive = emissive;
+          }
+        `}
       />
     </mesh>
   );
