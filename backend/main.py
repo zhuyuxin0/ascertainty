@@ -16,8 +16,10 @@ from backend import (
     cctp_watcher,
     claim_task,
     db,
+    inft,
     keeperhub,
     og_chain,
+    og_storage,
     publisher,
     telegram_bot,
     watcher,
@@ -44,6 +46,8 @@ async def lifespan(app: FastAPI):
     if og_chain.is_configured():
         _tasks.append(asyncio.create_task(watcher.watcher_task(), name="watcher"))
         _tasks.append(asyncio.create_task(claim_task.claim_task(), name="claim"))
+        # iNFT mint runs once at startup, idempotent. Best-effort.
+        _tasks.append(asyncio.create_task(inft.init(), name="inft_init"))
     if os.getenv("TELEGRAM_BOT_TOKEN"):
         _tasks.append(asyncio.create_task(telegram_bot.telegram_task(), name="telegram"))
     if os.getenv("ALCHEMY_API_KEY") or os.getenv("ALCHEMY_WS_URL"):
@@ -305,5 +309,26 @@ async def restart_race(bounty_id: int, duration: int = 180) -> dict[str, Any]:
 @app.get("/leaderboard")
 async def leaderboard(limit: int = 20) -> dict[str, Any]:
     return {"solvers": await db.leaderboard(limit=limit)}
+
+
+@app.get("/agent/status")
+async def agent_status() -> dict[str, Any]:
+    """Snapshot of the agent's iNFT identity, deployed contracts,
+    0G Storage / Compute / KeeperHub configuration. Powers the
+    dashboard's agent status panel."""
+    addresses = og_chain.addresses() if og_chain.is_configured() else None
+    kh_recent = await db.latest_kh_executions(limit=5)
+    return {
+        "inft": inft.get_state(),
+        "chain": addresses,
+        "operator": og_chain.get_account().address if og_chain.is_configured() else None,
+        "storage": {
+            "configured": og_storage.is_configured(),
+        },
+        "keeperhub": {
+            "configured": keeperhub.is_configured(),
+            "recent_executions": kh_recent,
+        },
+    }
 
 
