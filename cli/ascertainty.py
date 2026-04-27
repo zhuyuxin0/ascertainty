@@ -303,9 +303,7 @@ async def _run_submit_relayed(args: argparse.Namespace) -> int:
         if not result.accepted:
             print(f"verifier rejected proof — would never reach chain")
             return 1
-        # Pin timestamp so the server reproduces the exact same attestation hash
-        att_timestamp = int(time.time())
-        unsigned = build_attestation(spec, result, timestamp=att_timestamp)
+        unsigned = build_attestation(spec, result)
         signed = sign_attestation(unsigned, operator_key)
         attestation_hash = "0x" + signed["attestation_hash"]
         print(f"attestation_hash : {attestation_hash}")
@@ -331,7 +329,8 @@ async def _run_submit_relayed(args: argparse.Namespace) -> int:
         sig_hex = signed_msg.signature.hex()
         print(f"signature        : 0x{sig_hex}")
 
-        # 4) submit — pin timestamp + duration so server reproduces our attestation hash
+        # 4) submit — pass our locally-computed attestation_hash so the on-chain
+        # submitProofFor call matches the message the solver signed
         r = await client.post(
             "/bounty/submit",
             json={
@@ -339,8 +338,7 @@ async def _run_submit_relayed(args: argparse.Namespace) -> int:
                 "solver_address": solver_acct.address,
                 "proof": proof_text,
                 "signature": sig_hex,
-                "attestation_timestamp": att_timestamp,
-                "attestation_duration_seconds": result.duration_seconds,
+                "attestation_hash": attestation_hash,
             },
         )
         r.raise_for_status()

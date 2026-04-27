@@ -164,21 +164,15 @@ class SubmitProofBody(BaseModel):
     proof: str
     upload: bool = True
     explain: bool = True
-    # Optional EIP-191 personal_sign over publisher.build_submit_proof_message().
-    # When present, on-chain submission uses BountyFactory.submitProofFor and
-    # the recovered address (must equal solver_address) becomes the on-chain
-    # solver of record. When omitted, falls back to operator-as-solver via
-    # BountyFactory.submitProof.
+    # Optional EIP-191 personal_sign over publisher.build_submit_proof_message
+    # for `attestation_hash`. When present, on-chain submission goes through
+    # BountyFactory.submitProofFor and the recovered address (must equal
+    # solver_address) becomes the on-chain solver of record. The server still
+    # re-runs the verifier and refuses to relay if accepted=False — so the
+    # operator never relays an invalid proof. When omitted, falls back to
+    # operator-as-solver via BountyFactory.submitProof.
     signature: str | None = None
-    # Pin the attestation timestamp so the server reproduces exactly the
-    # attestation_hash the solver signed. Required when `signature` is set;
-    # ignored otherwise. (duration_seconds also varies — see below.)
-    attestation_timestamp: int | None = None
-    # Pin the duration_seconds so the server-rebuilt attestation matches
-    # the one the solver hashed. The server still re-runs the verifier and
-    # rejects if accepted=False, so the operator never relays an invalid
-    # proof.
-    attestation_duration_seconds: float | None = None
+    attestation_hash: str | None = None
 
 
 @app.post("/bounty/submit")
@@ -195,22 +189,13 @@ async def submit_proof(body: SubmitProofBody) -> dict[str, Any]:
     spec_for_verify = parse_spec(raw)
 
     result = await verify(spec_for_verify, body.proof)
-    if body.signature:
-        # Solver-relayer flow: rebuild the exact attestation the solver
-        # hashed locally so the on-chain `attestationHash` matches what
-        # the solver signed. We still gate on result.accepted — the
-        # operator never relays an invalid proof.
-        if body.attestation_timestamp is None or body.attestation_duration_seconds is None:
-            raise HTTPException(
-                status_code=400,
-                detail="signature requires attestation_timestamp + attestation_duration_seconds",
-            )
-        from dataclasses import replace as _replace
-        result = _replace(result, duration_seconds=body.attestation_duration_seconds)
-        unsigned = build_attestation(spec_for_verify, result, timestamp=body.attestation_timestamp)
-    else:
-        unsigned = build_attestation(spec_for_verify, result)
+    unsigned = build_attestation(spec_for_verify, result)
     signed = sign_attestation(unsigned, private_key)
+    if body.signature and not body.attestation_hash:
+        raise HTTPException(
+            status_code=400,
+            detail="signature requires attestation_hash (the 32-byte hash the solver signed)",
+        )
 
     storage_field = None
     storage_root_hash: str | None = None
@@ -249,8 +234,11 @@ async def submit_proof(body: SubmitProofBody) -> dict[str, Any]:
 
     onchain_field = None
     if result.accepted and bounty.get("onchain_bounty_id") and publisher.is_configured():
-        attestation_bytes = bytes.fromhex(signed["attestation_hash"])
         if body.signature:
+            # Use the client's attestation hash (what the solver actually
+            # signed). The server's freshly-built attestation is still
+            # stored in the DB submission for transparency / explanation.
+            attestation_bytes = bytes.fromhex(body.attestation_hash.removeprefix("0x"))
             sig = bytes.fromhex(body.signature.removeprefix("0x"))
             onchain = await publisher.submit_proof_for_onchain(
                 onchain_bounty_id=bounty["onchain_bounty_id"],
@@ -259,6 +247,7 @@ async def submit_proof(body: SubmitProofBody) -> dict[str, Any]:
                 signature=sig,
             )
         else:
+            attestation_bytes = bytes.fromhex(signed["attestation_hash"])
             onchain = await publisher.submit_proof_onchain(
                 onchain_bounty_id=bounty["onchain_bounty_id"],
                 attestation_hash=attestation_bytes,
