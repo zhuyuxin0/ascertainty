@@ -1,0 +1,28 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #050507;
+  --cyan: #00d4aa;
+  --amber: #ff6b35;
+}
+
+html, body {
+  background: var(--bg);
+  color: white;
+  min-height: 100vh;
+}
+
+::selection {
+  background: var(--cyan);
+  color: var(--bg);
+}
+
+/* Subtle scanline / grid texture for depth without being noisy */
+.bg-grid {
+  background-image:
+    linear-gradient(to right, rgba(255,255,255,0.03) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255,255,255,0.03) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
