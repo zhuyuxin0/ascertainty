@@ -108,27 +108,24 @@ function RoadOverlay({ geometry }: { geometry: THREE.BufferGeometry }) {
             float u = vCustomUv.x;
             float v = vCustomUv.y;
 
-            // Fresnel-style edge glow on the road sides
+            // Fresnel-style edge glow on the road sides — main visual hook
             float edgeDist = abs(u - 0.5) * 2.0; // 0 at center, 1 at edge
             float edgeGlow = pow(smoothstep(0.55, 1.0, edgeDist), 1.4);
 
-            // Scrolling dashed centerline (only in the middle ~10% of road width)
-            float centerStrip = 1.0 - smoothstep(0.04, 0.08, abs(u - 0.5));
-            float dashCycle = fract(v * 80.0 - uTime * uScrollSpeed);
-            float dash = step(0.45, dashCycle) * (1.0 - step(0.92, dashCycle));
-            float dashGlow = centerStrip * dash;
+            // Subtle longitudinal pulse along the road — sweeps colour
+            // through the edge glow rather than relying on quad-aligned dashes
+            // which kink at curves. This reads as a "live circuit" feeling
+            // even though it's just a continuous gradient.
+            float pulse = 0.65 + 0.35 * sin(v * 6.2831 * 1.5 - uTime * 1.2);
 
-            // Combine — cyan brand color
             vec3 cyan = vec3(0.0, 0.83, 0.67);
             vec3 amber = vec3(1.0, 0.42, 0.21);
 
-            float totalGlow = edgeGlow + dashGlow * 0.9;
+            float totalGlow = edgeGlow * (0.6 + 0.4 * pulse);
             vec3 emissive = cyan * totalGlow;
+            emissive += amber * pow(smoothstep(0.93, 1.0, edgeDist), 2.0) * 0.6;
 
-            // Soft amber tint at the very edges so each side reads as warm/cool
-            emissive += amber * pow(smoothstep(0.92, 1.0, edgeDist), 2.0) * 0.5;
-
-            float alpha = clamp(totalGlow + edgeGlow * 0.3, 0.0, 1.0);
+            float alpha = clamp(totalGlow + edgeGlow * 0.2, 0.0, 1.0);
 
             csm_DiffuseColor = vec4(0.0, 0.0, 0.0, alpha);
             csm_Emissive = emissive;

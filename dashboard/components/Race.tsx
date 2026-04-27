@@ -2,7 +2,7 @@
 
 import { Canvas, useThree } from "@react-three/fiber";
 import { Physics, usePlane } from "@react-three/cannon";
-import { Environment, Lightformer } from "@react-three/drei";
+import { Environment, Lightformer, Sparkles } from "@react-three/drei";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 
@@ -12,6 +12,7 @@ import { Track } from "./Track";
 import { CameraRig } from "./CameraRig";
 import { PostFX } from "./PostFX";
 import { BrunoFloor } from "./BrunoFloor";
+import { CityRing } from "./CityRing";
 import { MOCK_GRAPHS, pickGraphForBounty } from "@/lib/mockData";
 import { useRaceEngine, type CarState } from "@/lib/raceEngine";
 import type { TrackGeometry } from "@/lib/trackMapping";
@@ -82,11 +83,38 @@ export default function Race({ mode = "test", graphKey, bountyId, onState }: Rac
           <Lightformer form="rect" intensity={2} color="#a855f7" position={[12, 5, 8]} scale={[5, 1, 1]} />
         </Environment>
 
-        {/* Distant emissive sun anchor for the lens flare to latch onto */}
-        <mesh position={[-30, 18, -40]}>
-          <sphereGeometry args={[2.5, 16, 16]} />
-          <meshBasicMaterial color="#fff4d8" toneMapped={false} />
+        {/* Distant cyberpunk skyline silhouettes — three bands of depth */}
+        <CityRing seed={mode === "replay" ? (bountyId ?? 1) * 17 : 1337} />
+
+        {/* Sky-wide drifting particles at car-eye-level for atmospheric depth */}
+        <Sparkles
+          count={180}
+          scale={[120, 24, 120]}
+          size={3.5}
+          speed={0.4}
+          opacity={0.9}
+          color="#00d4aa"
+          noise={0.4}
+          position={[0, 4, 0]}
+        />
+        <Sparkles
+          count={80}
+          scale={[80, 12, 80]}
+          size={2.0}
+          speed={0.3}
+          opacity={0.7}
+          color="#ff6b35"
+          noise={0.3}
+          position={[0, 2, 0]}
+        />
+
+        {/* Bright sun anchor for the lens flare — large + intense so it
+            actually triggers the ektogamat effect's screen-space sampling */}
+        <mesh position={[-45, 28, -55]}>
+          <sphereGeometry args={[5, 24, 24]} />
+          <meshBasicMaterial color="#fff8dc" toneMapped={false} />
         </mesh>
+        <pointLight position={[-45, 28, -55]} intensity={2.5} color="#fff8dc" distance={120} decay={1.6} />
 
         {mode === "test" ? (
           <TestSceneContents graph={graph} />
