@@ -17,6 +17,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+# Install Lean 4 toolchain via elan for the real verifier path. Pinned
+# to leanprover/lean4:v4.10.0 to match the spec's lean_toolchain field.
+# Adds ~600 MB to the image but unblocks real `lean` invocation in
+# backend/lean_runner.py. If this RUN fails (e.g. network blip), the
+# verifier gracefully falls back to its mock kernel.
+ENV ELAN_HOME=/opt/elan
+ENV PATH=$ELAN_HOME/bin:$PATH
+RUN curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh \
+        -o /tmp/elan-init.sh && \
+    sh /tmp/elan-init.sh -y --default-toolchain leanprover/lean4:v4.10.0 \
+        --no-modify-path && \
+    rm /tmp/elan-init.sh && \
+    lean --version
+
 WORKDIR /app
 
 COPY requirements.txt /app/

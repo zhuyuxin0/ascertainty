@@ -27,15 +27,22 @@ from backend.verifier import VerificationResult
 
 
 ATTESTATION_VERSION = "1"
-VERIFIER_ID = "ascertainty-mock-lean4-v0.1"
+VERIFIER_BASE_ID = "ascertainty-lean4"
 
 
 def build_attestation(spec: BountySpec, result: VerificationResult) -> dict[str, Any]:
-    """Build the unsigned attestation dict (no signature yet)."""
+    """Build the unsigned attestation dict (no signature yet).
+
+    The `verifier` field carries the mode (`real_lean4` or `mock_lean4`)
+    so any consumer of the attestation can tell whether it came from a
+    real Lean kernel run or the sentinel-based fallback.
+    """
     kernel_output_hash = hashlib.sha256(result.kernel_output.encode()).hexdigest()
+    verifier_id = f"{VERIFIER_BASE_ID}-{result.mode}-v0.2"
     return {
         "version": ATTESTATION_VERSION,
-        "verifier": VERIFIER_ID,
+        "verifier": verifier_id,
+        "verifier_mode": result.mode,
         "bounty_id": spec.bounty_id,
         "spec_hash": spec_hash(spec),
         "proof_hash": result.proof_hash,
