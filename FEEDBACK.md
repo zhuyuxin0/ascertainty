@@ -203,6 +203,87 @@ secondary binary so the unqualified `npx @keeperhub/wallet` works.
 
 ---
 
+## Claim 7 — 0G Galileo (chain 16602) not in `web3/*` action chain list
+
+**Verdict: VERIFIED** — empirically reproduced today.
+
+KeeperHub's `web3/*` action plugins (`web3/check-balance`,
+`web3/read-contract`, `web3/write-contract`, `web3/transfer-token`, etc.)
+are gated to a curated set of EVM chains. Calling
+`get_plugin {pluginType: "web3/read-contract"}` returns 19 chains:
+Ethereum, Sepolia, Base, Base Sepolia, Polygon, Arbitrum, Avalanche,
+BNB, Plasma, Tempo, Solana Devnet — but **not** 0G Galileo (chainId 16602).
+
+This blocks the most natural KeeperHub integration for Ascertainty: a
+workflow that, on `/bounty/submit` accept, calls
+`BountyFactory.claimBounty(bountyId)` from KH's hosted Turnkey wallet
+after the challenge window expires. With the chain unsupported by the
+web3 actions, the on-chain claim has to live in Ascertainty's own
+backend (`claim_task`) instead.
+
+The numeric escape hatch from Claim 4 (`network: "16602"`) is documented
+as working for **Direct Execution**, but the workflow node `config.network`
+field appears to be validated against the curated chain list at runtime
+— I have not yet verified whether passing `"16602"` there would execute
+anyway or fail validation.
+
+### Empirical reproduction
+
+```bash
+$ python -c "
+import asyncio, json, os
+from backend.keeperhub import KeeperHubMcp
+async def go():
+    mcp = KeeperHubMcp(os.getenv('KEEPERHUB_API_KEY'))
+    await mcp.initialize()
+    p = await mcp.call_tool('get_plugin', {'pluginType': 'web3/read-contract'})
+    chains = [c['chainId'] for c in p['chains']]
+    print('16602 in supported chains?', 16602 in chains)
+    print('chains:', sorted(chains))
+asyncio.run(go())
+"
+16602 in supported chains? False
+chains: [1, 56, 97, 102, 103, 137, 4217, 8453, 9745, 9746, 11155111, 42161, 42429, 43113, 43114, 80002, 84532, 421614, ...]
+```
+
+### Why this matters
+
+0G is a fast-growing L1 with active testnet builder traction (this
+hackathon alone has multiple projects targeting Galileo). Builders who
+deploy contracts on 0G and want KeeperHub to drive on-chain automation
+currently have to fall back to either (a) running their own continuous
+backend that signs with their own wallet, defeating KH's hosted-wallet
+value proposition, or (b) Direct Execution if it accepts the numeric
+chain-ID escape hatch end-to-end (untested for write actions).
+
+### Suggested fix
+
+1. Add 0G Galileo (chainId 16602) and 0G mainnet to the curated chain
+   list for the `web3/*` actions. The chain is EVM-compatible (the
+   plugins should work without protocol-level changes).
+2. If a curated entry isn't immediately possible, add an explicit
+   "fallback" chain entry shape in the action node config schema:
+   `{ "network": "<chainId>", "rpc": "<custom_rpc_url>" }`. Builders
+   could then point at any EVM chain by URL, with KH's wallet signing
+   the tx and broadcasting via the supplied RPC. This is a one-time
+   per-builder setup that unlocks every long-tail EVM testnet without
+   KH having to curate each one.
+3. Document the result either way on the
+   `docs.keeperhub.com/api/direct-execution` page.
+
+### Workaround used in Ascertainty
+
+The KH integration that actually shipped is a manual-trigger workflow
+(`Ascertainty Settlement Monitor`, id `mqfy9h0zkedx1y4dbtrs5`) that does
+a `web3/check-balance` probe on Ethereum mainnet (chain 1) on every
+verification accept — purely to demonstrate the MCP trigger pipeline.
+The on-chain `claimBounty` runs from the operator wallet via web3.py in
+Ascertainty's `claim_task` background task. This is an acceptable
+hackathon compromise but isn't the architecture I'd ship to production
+once chain 16602 is supported.
+
+---
+
 ## What worked well
 
 - The MCP `streamable-HTTP` transport is exactly what we needed for a
@@ -220,10 +301,11 @@ secondary binary so the unqualified `npx @keeperhub/wallet` works.
 
 ## Summary
 
-Six independently verified documentation bugs, all caught while
-integrating KeeperHub into a single hackathon project's settlement loop.
-The auth-header bug (Claim 1) and the missing wallet discovery endpoint
-(Claim 5) had the highest impact: the first burned an hour on a 401
-that's the docs' fault; the second forced an architectural compromise
-(operator wallet as settlement signer) that won't generalize to
-production.
+Seven independently verified findings, all caught while integrating
+KeeperHub into a single hackathon project's settlement loop. The
+auth-header bug (Claim 1) and the missing wallet discovery endpoint
+(Claim 5) had the highest doc-side impact. The chain-coverage gap
+(Claim 7) is the most consequential platform-side finding: it's the
+single thing that would let Ascertainty (and any other 0G-native
+project) shift the settlement signer to KeeperHub's hosted wallet,
+which is the architecture I'd ship to production.
