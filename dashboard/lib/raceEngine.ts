@@ -14,6 +14,9 @@ export type CarState = {
   /** Active wobble (set after backtrack for ~1.5s) */
   wobble: number;
   lastEventTs: number;
+  /** True for client-side simulated "ghost" competitors. Real solvers
+   *  (with on-chain submissions) are false. The HUD displays a tag. */
+  simulated?: boolean;
 };
 
 const SOLVER_COLORS = ["#00d4aa", "#ff6b35", "#a855f7", "#f59e0b", "#3b82f6"];
@@ -141,4 +144,46 @@ function safeParse(s: string): Record<string, unknown> {
   } catch {
     return {};
   }
+}
+
+const GHOST_COLORS = ["#8b5cf6", "#f59e0b"]; // purple + amber-orange
+const GHOST_ADDRESSES = [
+  "0xGH05T0000000000000000000000000000000A001",
+  "0xGH05T0000000000000000000000000000000B002",
+];
+
+/**
+ * Augment the real-solver car set with deterministic "ghost" competitors
+ * for visual richness during the demo. A bounty's contract today only
+ * permits one solver, so the live race set has at most one car — adding
+ * two ghost cars makes the scene feel like the multi-solver future.
+ *
+ * Ghosts only appear when at least one REAL car exists (so empty bounties
+ * don't show fake activity), and never finish ahead of the real lead
+ * car (so they read as competitors, not winners).
+ *
+ * Each ghost has `simulated: true` so the HUD can clearly tag them.
+ */
+export function withGhostSolvers(
+  realCars: CarState[],
+  bountyId: number,
+): CarState[] {
+  if (realCars.length === 0) return realCars;
+  const lead = realCars.reduce((a, b) => (a.fraction > b.fraction ? a : b));
+  // Two ghost cars, deterministically offset behind the leader
+  const ghosts: CarState[] = GHOST_ADDRESSES.map((addr, i) => {
+    const offset = (i + 1) * 0.07; // ghost 0 is 7% behind, ghost 1 is 14% behind
+    const wiggle = Math.sin(Date.now() * 0.0008 + bountyId * 1.7 + i * 2.1) * 0.02;
+    const f = Math.max(0, Math.min(0.85, lead.fraction - offset + wiggle));
+    return {
+      solver: addr,
+      color: GHOST_COLORS[i],
+      fraction: f,
+      status: "racing",
+      wobble: 0,
+      lastEventTs: Math.floor(Date.now() / 1000),
+      simulated: true,
+    };
+  });
+  return [...realCars, ...ghosts];
 }

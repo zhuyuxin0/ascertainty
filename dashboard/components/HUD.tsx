@@ -86,11 +86,13 @@ function CarChip({ car, rank }: { car: CarState; rank: number }) {
       />
       <div className="flex-1 flex flex-col gap-0.5">
         <div className="font-mono text-[10px] uppercase tracking-widest text-white/60 flex justify-between">
-          <span>#{rank}</span>
+          <span>#{rank}{car.simulated && <span className="text-white/30 ml-1">· sim</span>}</span>
           <span>{STATUS_LABEL[car.status]}</span>
         </div>
         <div className="font-mono text-[11px] text-white/80 truncate">
-          {car.solver.slice(0, 10)}…{car.solver.slice(-4)}
+          {car.simulated
+            ? "ghost solver"
+            : `${car.solver.slice(0, 10)}…${car.solver.slice(-4)}`}
         </div>
         <div className="h-0.5 bg-line mt-1">
           <div

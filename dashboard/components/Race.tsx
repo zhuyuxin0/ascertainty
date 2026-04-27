@@ -14,7 +14,7 @@ import { PostFX } from "./PostFX";
 import { BrunoFloor } from "./BrunoFloor";
 import { CityRing } from "./CityRing";
 import { MOCK_GRAPHS, pickGraphForBounty } from "@/lib/mockData";
-import { useRaceEngine, type CarState } from "@/lib/raceEngine";
+import { useRaceEngine, withGhostSolvers, type CarState } from "@/lib/raceEngine";
 import type { TrackGeometry } from "@/lib/trackMapping";
 
 type RaceProps = {
@@ -161,7 +161,7 @@ function ReplaySceneContents({
 }) {
   const [track, setTrack] = useState<TrackGeometry | null>(null);
   const { cars } = useRaceEngine(bountyId);
-  const carEntries = Object.values(cars);
+  const carEntries = withGhostSolvers(Object.values(cars), bountyId);
 
   if (onState) {
     queueMicrotask(() => onState({ cars: carEntries, track }));
