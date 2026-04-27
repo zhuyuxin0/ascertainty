@@ -7,7 +7,7 @@ import { Suspense, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 
 import { Vehicle } from "./Vehicle";
-import { RaceCar } from "./RaceCar";
+import { RaceCarGLTF } from "./RaceCarGLTF";
 import { Track } from "./Track";
 import { CameraRig } from "./CameraRig";
 import { PostFX } from "./PostFX";
@@ -152,7 +152,7 @@ function ReplaySceneContents({
         <Track graph={graph} onReady={setTrack} />
         {track &&
           carEntries.map((car, i) => (
-            <RaceCar key={car.solver} car={car} track={track} index={i} />
+            <RaceCarGLTF key={car.solver} car={car} track={track} index={i} />
           ))}
       </Physics>
     </>

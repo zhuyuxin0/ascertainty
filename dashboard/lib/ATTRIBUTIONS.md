@@ -52,3 +52,23 @@ npm packages, listed in `dashboard/package.json`.
 ## three.js (MIT)
 
 Used as published. https://github.com/mrdoob/three.js
+
+## Classic Muscle Car — Sketchfab (CC-BY-4.0)
+
+Source: https://sketchfab.com/3d-models/classic-muscle-car-641efc889e5f4543bae51d0922e6f4b3
+Author: Alexus16 (https://sketchfab.com/Alexus16)
+License: CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+Used as the chassis + wheel GLTF assets in
+`dashboard/public/models/chassis-draco.glb` and
+`dashboard/public/models/wheel-draco.glb`. The body paint material is
+tinted per car instance (one solver = one color); all other materials
+(chrome, glass, brake lights, undercarriage) are stock from the model.
+
+The draco-compressed `.glb` files are byte-for-byte identical to the
+versions distributed in the open-source pmndrs/racing-game repo (MIT)
+under `public/models/`, which itself attributed them to Alexus16.
+
+Per CC-BY-4.0: this attribution is required when using the model in a
+public-facing demo. No further restrictions on commercial use or
+modification.

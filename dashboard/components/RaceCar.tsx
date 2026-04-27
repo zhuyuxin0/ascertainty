@@ -27,6 +27,8 @@ export function RaceCar({
   const trailAnchor = useRef<THREE.Mesh>(null);
   const targetFraction = useRef(car.fraction);
   const currentFraction = useRef(car.fraction);
+  const crashSettled = useRef(false);
+  const crashStartTs = useRef<number | null>(null);
   targetFraction.current = car.fraction;
 
   const lateralOffset = useMemo(() => (index - 1) * 1.7, [index]);
@@ -57,12 +59,28 @@ export function RaceCar({
     pos.y += 0.42;
 
     if (car.status === "crashed") {
-      pos.y -= 0.3;
-      groupRef.current.rotation.z += delta * 1.6;
-      groupRef.current.rotation.x += delta * 0.4;
+      // One-shot tumble: spin for ~1.5s, then settle on its side and stop.
+      if (crashStartTs.current === null) {
+        crashStartTs.current = state.clock.elapsedTime;
+        crashSettled.current = false;
+      }
+      const t = state.clock.elapsedTime - crashStartTs.current;
+      if (!crashSettled.current && t < 1.5) {
+        const yaw = Math.atan2(heading.x, heading.z);
+        groupRef.current.rotation.set(0, yaw, t * 4); // tip over fast
+      } else if (!crashSettled.current) {
+        // Settle: car is on its side, slight smoke-puff jitter, then freeze
+        const yaw = Math.atan2(heading.x, heading.z);
+        groupRef.current.rotation.set(0, yaw, Math.PI / 2);
+        crashSettled.current = true;
+      }
+      pos.y -= 0.25;
       groupRef.current.position.copy(pos);
       return;
     }
+    // Reset crash trackers if we somehow re-enter racing
+    crashStartTs.current = null;
+    crashSettled.current = false;
 
     const tiltAmount = car.status === "pitting" ? -0.12 : 0;
     const wobble = car.wobble * Math.sin(state.clock.elapsedTime * 30) * 0.18;
@@ -147,12 +165,9 @@ export function RaceCar({
         )),
       )}
 
-      {/* finished: vertical light beam from the car */}
+      {/* finished: a soft halo around the car instead of a vertical beam */}
       {isFinished && (
-        <mesh position={[0, 6, 0]}>
-          <boxGeometry args={[0.4, 12, 0.4]} />
-          <meshBasicMaterial color={car.color} transparent opacity={0.35} toneMapped={false} />
-        </mesh>
+        <pointLight position={[0, 1.2, 0]} intensity={2.5} color={car.color} distance={8} decay={1.4} />
       )}
     </group>
   );
