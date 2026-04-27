@@ -1,0 +1,53 @@
+# Ascertainty backend stack — runs on the Contabo VPS.
+# - `api`:   FastAPI app + lifespan tasks (watcher, claim, telegram, cctp).
+# - `caddy`: TLS-terminating reverse proxy. Auto-issues + renews
+#   Let's Encrypt certs for api.ascertainty.xyz.
+#
+# Usage on the VPS:
+#   1. Place .env beside this file (NEVER commit; same env keys as the
+#      local dev .env, plus DOMAIN=api.ascertainty.xyz).
+#   2. docker compose up -d --build
+#   3. tail logs: docker compose logs -f api
+
+services:
+  api:
+    build: .
+    image: ascertainty-api:latest
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./data:/app/data
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://127.0.0.1:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks:
+      - web
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    env_file: .env
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+    networks:
+      - web
+
+networks:
+  web:
+    driver: bridge
+
+volumes:
+  caddy_data:
+  caddy_config:

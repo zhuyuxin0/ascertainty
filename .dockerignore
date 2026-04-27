@@ -1,0 +1,32 @@
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+.venv
+venv
+__pycache__
+*.pyc
+*.pyo
+*.swp
+.DS_Store
+
+# Frontend — built and deployed separately to Vercel
+dashboard/
+docs/
+
+# Smart contract artifacts — not needed at runtime
+contracts/artifacts
+contracts/cache
+contracts/node_modules
+
+# Local data — uses a docker volume in production
+data/*.db
+data/*.db-*
+data/telegram_subs.json
+
+# Plans + agent files — local only
+.claude
+CLAUDE.md
+AGENTS.md
+plans/

@@ -62,12 +62,12 @@ app = FastAPI(title="Ascertainty", version="0.2.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     # Localhost (any port) for dev, plus Vercel preview deployments + the
-    # production custom domain.
+    # production custom domain (root + any subdomain).
     allow_origin_regex=(
         r"^https?://("
         r"localhost(:\d+)?|"
         r"127\.0\.0\.1(:\d+)?|"
-        r"ascertainty\.xyz|"
+        r"(?:[a-z0-9-]+\.)?ascertainty\.xyz|"
         r"(?:[a-z0-9-]+-)?ascertainty(?:-[a-z0-9-]+)?\.vercel\.app"
         r")$"
     ),
