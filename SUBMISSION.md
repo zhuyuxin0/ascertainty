@@ -83,10 +83,16 @@ Key engineering decisions:
     round-trips through escrow. A production rewrite would add
     submitProofFor(bountyId, attestationHash, solver, signature) with
     on-chain ecrecover.
-  - Mock Lean4 kernel — sentinel-comment based ("-- ascertainty:
-    reject" → reject, otherwise accept after a configurable delay)
-    so the full pipeline ships in seven days. Attestation schema +
-    signing match what a real kernel run would produce.
+  - Real Lean 4 kernel (v4.10.0) installed in the Docker image via
+    elan. backend/lean_runner.py spawns `lean` against a temp file
+    per submission, parses the real exit code + #print axioms output,
+    times out at 30s. Tested in production: trivial proofs accept
+    (zero axioms), wrong proofs reject with the actual Lean type-error
+    message in kernel_output. Each attestation carries
+    verifier_mode: real_lean4 vs mock_lean4 so it's transparent when
+    the fallback fired (e.g. local dev without elan).
+    Phase 1 scope: stdlib-only. Mathlib-pinned verification per
+    spec.mathlib_sha is Phase 2 (one toolchain build per SHA).
   - Race events are time-gated server-side. seed-race CLI inserts
     rows with future timestamps; the /bounty/{id}/race-events endpoint
     only returns events with ts <= now, so a 90-second seeded race

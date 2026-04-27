@@ -203,10 +203,16 @@ Night HDRI (CC0), Anderson Mancini's lens flare (CC0).
   add `submitProofFor(bountyId, attestationHash, solver, signature)`
   with on-chain ecrecover so the agent can submit on a solver's
   behalf.
-- **Mock Lean4 kernel.** Real Lean verification (spawning `lake env
-  lean --run check.lean` against a pinned mathlib SHA) is the natural
-  follow-up. The attestation schema and signing already match a real
-  kernel's output shape.
+- **Real Lean4 kernel runs against the Lean stdlib only — Mathlib not
+  yet pre-built per `mathlib_sha`.** The agent spawns the real `lean`
+  binary (v4.10.0) per submission via `backend/lean_runner.py` with a
+  30s timeout, parses the actual exit code + `#print axioms` output,
+  and records `verifier_mode: real_lean4` in the attestation. Mathlib-
+  based verification (one toolchain build per pinned `mathlib_sha`)
+  is the natural Phase 2 — adds 10-20 min one-time provisioning per
+  spec, then ~5s per proof. When the toolchain isn't installed
+  (e.g. local dev), the verifier transparently falls back to a mock
+  with a sentinel comment, tagged `verifier_mode: mock_lean4`.
 - **0G Galileo not yet on KeeperHub's web3 chain list.** Forces the
   on-chain settlement signer to remain the operator wallet rather than
   KH's hosted Turnkey wallet (FEEDBACK.md Claim 7).
