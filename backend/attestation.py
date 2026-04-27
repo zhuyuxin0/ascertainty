@@ -30,12 +30,21 @@ ATTESTATION_VERSION = "1"
 VERIFIER_BASE_ID = "ascertainty-lean4"
 
 
-def build_attestation(spec: BountySpec, result: VerificationResult) -> dict[str, Any]:
+def build_attestation(
+    spec: BountySpec,
+    result: VerificationResult,
+    *,
+    timestamp: int | None = None,
+) -> dict[str, Any]:
     """Build the unsigned attestation dict (no signature yet).
 
     The `verifier` field carries the mode (`real_lean4` or `mock_lean4`)
     so any consumer of the attestation can tell whether it came from a
     real Lean kernel run or the sentinel-based fallback.
+
+    `timestamp` may be pinned by the caller; when omitted defaults to
+    int(time.time()). Pinning is required for the gasless solver-relayer
+    flow so the client and server compute the same attestation_hash.
     """
     kernel_output_hash = hashlib.sha256(result.kernel_output.encode()).hexdigest()
     verifier_id = f"{VERIFIER_BASE_ID}-{result.mode}-v0.2"
@@ -52,7 +61,7 @@ def build_attestation(spec: BountySpec, result: VerificationResult) -> dict[str,
         "axioms_used": list(result.axioms_used),
         "result": "accept" if result.accepted else "reject",
         "duration_seconds": round(result.duration_seconds, 6),
-        "timestamp": int(time.time()),
+        "timestamp": timestamp if timestamp is not None else int(time.time()),
     }
 
 

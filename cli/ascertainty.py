@@ -293,7 +293,7 @@ async def _run_submit_relayed(args: argparse.Namespace) -> int:
     from backend.spec import parse_spec
     import yaml as _yaml
 
-    async with httpx.AsyncClient(base_url=args.api, timeout=60.0) as client:
+    async with httpx.AsyncClient(base_url=args.api, timeout=120.0) as client:
         r = await client.get(f"/bounty/{args.bounty_id}/status")
         r.raise_for_status()
         status = r.json()
@@ -303,7 +303,9 @@ async def _run_submit_relayed(args: argparse.Namespace) -> int:
         if not result.accepted:
             print(f"verifier rejected proof — would never reach chain")
             return 1
-        unsigned = build_attestation(spec, result)
+        # Pin timestamp so the server reproduces the exact same attestation hash
+        att_timestamp = int(time.time())
+        unsigned = build_attestation(spec, result, timestamp=att_timestamp)
         signed = sign_attestation(unsigned, operator_key)
         attestation_hash = "0x" + signed["attestation_hash"]
         print(f"attestation_hash : {attestation_hash}")
@@ -329,7 +331,7 @@ async def _run_submit_relayed(args: argparse.Namespace) -> int:
         sig_hex = signed_msg.signature.hex()
         print(f"signature        : 0x{sig_hex}")
 
-        # 4) submit
+        # 4) submit — pin timestamp + duration so server reproduces our attestation hash
         r = await client.post(
             "/bounty/submit",
             json={
@@ -337,6 +339,8 @@ async def _run_submit_relayed(args: argparse.Namespace) -> int:
                 "solver_address": solver_acct.address,
                 "proof": proof_text,
                 "signature": sig_hex,
+                "attestation_timestamp": att_timestamp,
+                "attestation_duration_seconds": result.duration_seconds,
             },
         )
         r.raise_for_status()

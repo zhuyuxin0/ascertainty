@@ -170,6 +170,15 @@ class SubmitProofBody(BaseModel):
     # solver of record. When omitted, falls back to operator-as-solver via
     # BountyFactory.submitProof.
     signature: str | None = None
+    # Pin the attestation timestamp so the server reproduces exactly the
+    # attestation_hash the solver signed. Required when `signature` is set;
+    # ignored otherwise. (duration_seconds also varies — see below.)
+    attestation_timestamp: int | None = None
+    # Pin the duration_seconds so the server-rebuilt attestation matches
+    # the one the solver hashed. The server still re-runs the verifier and
+    # rejects if accepted=False, so the operator never relays an invalid
+    # proof.
+    attestation_duration_seconds: float | None = None
 
 
 @app.post("/bounty/submit")
@@ -186,7 +195,21 @@ async def submit_proof(body: SubmitProofBody) -> dict[str, Any]:
     spec_for_verify = parse_spec(raw)
 
     result = await verify(spec_for_verify, body.proof)
-    unsigned = build_attestation(spec_for_verify, result)
+    if body.signature:
+        # Solver-relayer flow: rebuild the exact attestation the solver
+        # hashed locally so the on-chain `attestationHash` matches what
+        # the solver signed. We still gate on result.accepted — the
+        # operator never relays an invalid proof.
+        if body.attestation_timestamp is None or body.attestation_duration_seconds is None:
+            raise HTTPException(
+                status_code=400,
+                detail="signature requires attestation_timestamp + attestation_duration_seconds",
+            )
+        from dataclasses import replace as _replace
+        result = _replace(result, duration_seconds=body.attestation_duration_seconds)
+        unsigned = build_attestation(spec_for_verify, result, timestamp=body.attestation_timestamp)
+    else:
+        unsigned = build_attestation(spec_for_verify, result)
     signed = sign_attestation(unsigned, private_key)
 
     storage_field = None
