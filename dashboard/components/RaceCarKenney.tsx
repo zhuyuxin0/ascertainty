@@ -33,6 +33,7 @@ export function RaceCarKenney({
   const crashStartTs = useRef<number | null>(null);
   const crashSettled = useRef(false);
   const carPos = useRef<[number, number, number]>([0, 0, 0]);
+  const trackY = useRef(0); // track surface y at car's current position
   const carYaw = useRef(0);
   targetFraction.current = car.fraction;
 
@@ -62,7 +63,8 @@ export function RaceCarKenney({
     const up = new THREE.Vector3(0, 1, 0);
     const side = heading.clone().cross(up).normalize();
     pos.addScaledVector(side, lateralOffset);
-    pos.y += 0.32; // ride height for Kenney cars (smaller than muscle car)
+    trackY.current = pos.y; // capture track surface y BEFORE adding ride height
+    pos.y += 0.04; // Kenney cars: wheels hang below model origin, near-zero offset puts them on the track
 
     if (car.status === "crashed") {
       if (crashStartTs.current === null) {
@@ -104,9 +106,9 @@ export function RaceCarKenney({
 
   return (
     <>
-      {/* Fake shadow at floor level — separate from car group so it doesn't tilt */}
+      {/* Fake shadow at track-surface level — follows elevation changes */}
       <FakeShadow
-        position={[carPos.current[0], 0, carPos.current[2]]}
+        position={[carPos.current[0], trackY.current + 0.01, carPos.current[2]]}
         rotation={carYaw.current}
         alpha={isCrashed ? 0.4 : 0.7}
         size={3.4}
@@ -132,14 +134,16 @@ export function RaceCarKenney({
 
         <KenneyCar modelIndex={modelIndex} tint={car.color} dimmed={car.status === "pitting"} />
 
-        {/* underglow band */}
-        <mesh position={[0, -0.18, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-          <planeGeometry args={[1.8, 3.2]} />
+        {/* underglow band — sits just above the track surface so it always
+            reads as a halo around the car, never as a rectangle on the floor */}
+        <mesh position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[1.4, 2.6]} />
           <meshBasicMaterial
             color={car.color}
             transparent
-            opacity={isMoving ? 0.28 : 0.12}
+            opacity={isMoving ? 0.18 : 0.08}
             toneMapped={false}
+            depthWrite={false}
           />
         </mesh>
 

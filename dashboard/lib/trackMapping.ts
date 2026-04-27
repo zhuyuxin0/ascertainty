@@ -89,28 +89,43 @@ export function buildTrack(graph: DependencyGraph): TrackGeometry {
 }
 
 function computeControlPoints(nodes: GraphNode[]): THREE.Vector3[] {
-  // Walk along +Z, perturbed by branchFactor (sideways) and hardness (up).
-  const stepZ = 8; // spacing between depth steps
-  let x = 0;
-  let yawDeg = 0;
+  // Walk along the track in *segments* so the track curves visibly. Every
+  // node injects a heading change driven by its branchFactor and hardness;
+  // the next position is computed by stepping forward along the current
+  // heading, not by a fixed +Z grid. This produces racetrack-shaped paths
+  // rather than near-straight ribbons.
+  const stepLength = 9; // distance between successive control points
   const points: THREE.Vector3[] = [];
 
+  let pos = new THREE.Vector3(0, 0, 0);
+  let yawDeg = 0;
+  let pitchDeg = 0;
+  let altitude = 0;
+
   nodes.forEach((node, i) => {
-    // sideways drift driven by branchFactor (alternates left/right)
+    // Push the current point first (so node 0 is at origin)
+    points.push(pos.clone().setY(altitude));
+
+    // Heading change for the next step — alternating L/R, magnitude
+    // amplified by branchFactor and hardness.
     const sideSign = i % 2 === 0 ? 1 : -1;
-    const sideMagnitude = (node.branchFactor - 1) * 4 * sideSign;
-    x += sideMagnitude * 0.4;
+    const branchTurn = (node.branchFactor - 1) * 22; // deg
+    const hardTurn = (node.hardness ?? 0) * 26;       // deg
+    const baseTurn = 12;                               // base sweep so even straights curve a bit
+    yawDeg += sideSign * (baseTurn + branchTurn + hardTurn);
 
-    // tighten heading on hard nodes
-    yawDeg += (node.hardness ?? 0) * 30 * sideSign;
+    // Pitch change (elevation) — hardness rolls up/down
+    pitchDeg += sideSign * (node.hardness ?? 0) * 12;
+    pitchDeg = THREE.MathUtils.clamp(pitchDeg, -10, 10);
 
+    // Step forward along current heading
     const yaw = THREE.MathUtils.degToRad(yawDeg);
-    const z = node.depth * stepZ;
-    const y = (node.hardness ?? 0) * 1.8; // small elevation on hard nodes
-
-    // small perpendicular offset by yaw to avoid pure straight line
-    const offX = Math.sin(yaw) * 1.5;
-    points.push(new THREE.Vector3(x + offX, y, z));
+    const pitch = THREE.MathUtils.degToRad(pitchDeg);
+    const dx = Math.sin(yaw) * Math.cos(pitch) * stepLength;
+    const dz = Math.cos(yaw) * Math.cos(pitch) * stepLength;
+    const dy = Math.sin(pitch) * stepLength;
+    pos = new THREE.Vector3(pos.x + dx, pos.y, pos.z + dz);
+    altitude += dy * 0.3; // dampen elevation so cars don't go vertical
   });
 
   return points;
