@@ -16,6 +16,7 @@ export default function HomePage() {
           <nav className="flex gap-6 font-mono text-xs uppercase tracking-widest text-white/60">
             <Link href="/bounties" className="hover:text-cyan">Bounties</Link>
             <Link href="/leaderboard" className="hover:text-cyan">Leaderboard</Link>
+            <Link href="/agent" className="hover:text-cyan">Agent</Link>
             <Link
               href="https://github.com/zhuyuxin0/ascertainty"
               className="hover:text-cyan"

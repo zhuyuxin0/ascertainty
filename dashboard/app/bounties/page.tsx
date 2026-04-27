@@ -34,6 +34,7 @@ export default async function BountiesPage() {
           <nav className="flex gap-6 font-mono text-xs uppercase tracking-widest text-white/60">
             <Link href="/bounties" className="text-cyan">Bounties</Link>
             <Link href="/leaderboard" className="hover:text-cyan">Leaderboard</Link>
+            <Link href="/agent" className="hover:text-cyan">Agent</Link>
           </nav>
         </div>
       </header>
