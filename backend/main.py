@@ -244,6 +244,35 @@ async def assist_check_duplicate(body: RateBody) -> dict[str, Any]:
     }
 
 
+async def _recover_revert_reason(w3, tx_hash: str, receipt) -> str | None:
+    """Re-execute the reverted tx at its block via eth_call to read the
+    revert reason string. Best-effort — silently returns None if the RPC
+    doesn't support tracing or the reason can't be decoded."""
+    try:
+        tx = await w3.eth.get_transaction(tx_hash)
+        call = {
+            "from": tx["from"],
+            "to": tx["to"],
+            "data": tx["input"],
+            "value": tx.get("value", 0),
+            "gas": tx["gas"],
+        }
+        await w3.eth.call(call, block_identifier=receipt["blockNumber"])
+        return None  # didn't revert in eth_call (race or RPC quirk)
+    except Exception as e:
+        msg = str(e)
+        # web3.py wraps revert reasons like: 'execution reverted: deadline past'
+        marker = "execution reverted:"
+        if marker in msg:
+            return msg.split(marker, 1)[1].strip().strip("'\"")
+        # Some RPCs return reason in nested dict — check common shapes
+        if hasattr(e, "args") and e.args:
+            inner = str(e.args[0])
+            if marker in inner:
+                return inner.split(marker, 1)[1].strip().strip("'\"")
+        return None
+
+
 def _tokenize(s: str) -> list[str]:
     """Cheap lexical tokenizer — splits on whitespace + Lean punctuation,
     drops 1-char tokens. Good enough for Jaccard similarity on theorem
@@ -257,7 +286,8 @@ async def prepare_create(body: PrepareCreateBody) -> dict[str, Any]:
     """Return on-chain call args (specHash, amount, deadline, challengeWindow)
     + the BountyFactory + MockUSDC contract addresses so the frontend can
     issue createBounty from the connected wallet without re-implementing
-    the spec parser."""
+    the spec parser. Validates the spec against on-chain `require` checks
+    so we fail fast here rather than burning gas on a sure-revert."""
     try:
         raw = yaml.safe_load(body.spec_yaml)
         if not isinstance(raw, dict):
@@ -265,6 +295,33 @@ async def prepare_create(body: PrepareCreateBody) -> dict[str, Any]:
         spec = parse_spec(raw)
     except (SpecError, yaml.YAMLError) as e:
         raise HTTPException(status_code=400, detail=f"invalid spec: {e}")
+    now = int(time.time())
+    if spec.deadline_unix <= now:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"deadline_unix ({spec.deadline_unix}) is in the past — "
+                f"current_unix_time is {now}. The on-chain createBounty "
+                f"would revert with 'deadline past'. Edit the YAML and "
+                f"re-prepare."
+            ),
+        )
+    if spec.deadline_unix - now < 60:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"deadline_unix ({spec.deadline_unix}) is too tight — "
+                f"only {spec.deadline_unix - now}s in the future. "
+                f"Set a deadline at least 1 minute out so the wallet "
+                f"signing flow doesn't race the contract's deadline check."
+            ),
+        )
+    if spec.bounty_usdc <= 0:
+        raise HTTPException(status_code=400, detail="bounty_usdc must be > 0")
+    if spec.challenge_window_seconds <= 0:
+        raise HTTPException(
+            status_code=400, detail="challenge_window_seconds must be > 0",
+        )
     h = spec_hash(spec)
     addrs = og_chain.addresses()["contracts"] if og_chain.is_configured() else {}
     return {
@@ -332,11 +389,23 @@ async def create_bounty(body: CreateBountyBody) -> dict[str, Any]:
             factory = og_chain.get_factory()
             tx_hash_bytes = bytes.fromhex(body.tx_hash.removeprefix("0x"))
             receipt = await w3.eth.wait_for_transaction_receipt(tx_hash_bytes, timeout=60)
+            if int(receipt.get("status", 0)) != 1:
+                # Try to recover the revert reason by re-simulating the tx
+                # at its block. If unavailable, surface a generic message
+                # that points the user at the most likely causes.
+                reason = await _recover_revert_reason(w3, body.tx_hash, receipt)
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"on-chain createBounty reverted "
+                        f"({reason or 'check deadline > now, allowance ≥ amount, balance ≥ amount'})"
+                    ),
+                )
             events = factory.events.BountyCreated().process_receipt(receipt)
             if not events:
                 raise HTTPException(
                     status_code=400,
-                    detail="tx did not emit BountyCreated (wrong contract or reverted?)",
+                    detail="tx confirmed but did not emit BountyCreated — wrong contract address?",
                 )
             onchain_id = int(events[0]["args"]["bountyId"])
             await db.set_bounty_onchain(

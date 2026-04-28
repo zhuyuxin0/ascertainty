@@ -28,12 +28,12 @@ Ascertainty is a settlement layer for verified intellectual work.
 Posters publish a YAML bounty spec (Lean theorem signature, mathlib
 SHA, axiom whitelist, USDC amount, deadline, challenge window) and
 escrow MockUSDC into a BountyFactory contract on 0G Galileo testnet.
-A solver — human, AI agent, or human-with-AI in the spirit of Liam
-Price's recent Erdős #1196 result — submits a Lean 4 proof. The
-operator's verifier spawns the real lean v4.10.0 binary, parses
-the kernel exit code and #print axioms output, signs an attestation
-(EIP-191), uploads it to 0G Storage, fetches a TEE-verified
-explanation from 0G Compute, and posts submitProofFor on-chain.
+A solver — human, AI agent, or human-with-AI — submits a Lean 4
+proof. The operator's verifier spawns the real lean v4.10.0 binary,
+parses the kernel exit code and #print axioms output, signs an
+attestation (EIP-191), uploads it to 0G Storage, fetches a
+TEE-verified explanation from 0G Compute, and posts submitProofFor
+on-chain.
 Crucially, submitProofFor uses ECDSA recovery so the operator pays
 gas while the on-chain solver of record is the connected wallet
 that signed off-chain — the demo shows three persona solvers
@@ -44,9 +44,10 @@ auto-claim fires and MockUSDC settles to the recovered solver.
 Three integrations make every bounty richer:
 1. AI bounty creation — the poster describes their claim in plain
    English; 0G Compute (Sealed Inference) autoformalizes a draft
-   Lean spec, scores novelty + difficulty 1–10 each, flags Erdős-
-   class entries (both ≥ 9), and detects duplicates against existing
-   bounties via Jaccard similarity over theorem signatures.
+   Lean spec, scores novelty + difficulty 1–10 each, flags
+   Research-grade entries (both ≥ 9 — long-standing open problems
+   requiring research-grade insight), and detects duplicates against
+   existing bounties via Jaccard similarity over theorem signatures.
 2. Earnable solver badges — the system computes 9 GitHub-style
    achievement badges per persona from real DB + on-chain activity
    (PDE Specialist, Mathlib Gap Closer, Gasless Pioneer, Streak: 3,
@@ -99,7 +100,7 @@ Stack:
              Sealed Inference (qwen / llama / gpt-class chat models
              via the SDK's auto-discovered providers): formalize
              (English → draft Lean spec YAML), rate (novelty 1–10 +
-             difficulty 1–10 + Erdős-class flag when both ≥ 9),
+             difficulty 1–10 + Research-grade flag when both ≥ 9),
              check-duplicate (exact spec_hash collision blocks; 70%+
              Jaccard over theorem-signature tokens warns). Heuristic
              fallback when the provider rotates out so the demo
@@ -194,7 +195,7 @@ of each (not just integration checkboxes):
    (b) Per-submission TEE-verified explanation of why the proof was
        accepted, persisted on the submission record.
    (c) AI bounty assist: formalize (English → Lean spec), rate
-       (novelty + difficulty 1–10 with Erdős-class flag), powered
+       (novelty + difficulty 1–10 with Research-grade flag), powered
        by the same provider auto-discovery. Heuristic fallback when
        providers rotate.
 
@@ -294,10 +295,10 @@ A tight script you can read aloud while screen-recording. Aim for
   duplicates**.
 - Voiceover: "Posting a bounty starts with English. 0G Compute
   Sealed Inference autoformalizes the claim into a Lean spec, scores
-  novelty and difficulty 1 to 10 each, and flags Erdős-class entries
-  — both ratings ≥ 9 — anchored on the Liam Price / Erdős #1196
-  result. It also checks for duplicates by Jaccard similarity over
-  theorem signatures."
+  novelty and difficulty 1 to 10 each, and flags Research-grade
+  entries — both ratings ≥ 9, meaning a long-standing open problem.
+  It also checks for duplicates by Jaccard similarity over theorem
+  signatures."
 
 ### 0:55 – 1:20 — Wallet-driven escrow
 - Visual: click **Mint 1,000 demo USDC** (faucet from connected

@@ -176,6 +176,25 @@ export default function NewBountyPage() {
   async function onCreate() {
     if (!prepared || !address) return;
     setError(null);
+    // Pre-flight: every on-chain `require` check, surfaced as a clear
+    // error before we burn gas on a sure-revert.
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (prepared.deadline_unix <= nowSec) {
+      setError(
+        `deadline is in the past (${new Date(prepared.deadline_unix * 1000).toISOString()}) — fix the YAML and re-prepare.`,
+      );
+      return;
+    }
+    if (prepared.deadline_unix - nowSec < 60) {
+      setError(
+        `deadline is too tight (${prepared.deadline_unix - nowSec}s out) — push it at least 1 minute into the future.`,
+      );
+      return;
+    }
+    if (amount <= 0n) {
+      setError("bounty amount must be > 0.");
+      return;
+    }
     setPhase("creating");
     try {
       const txHash = await writeContractAsync({

@@ -236,9 +236,10 @@ export function BountyAssistant({
             <div className="border border-amber bg-amber/10 px-3 py-2 flex items-center gap-2">
               <span className="text-xl">✨</span>
               <span className="font-sans text-amber text-sm">
-                <strong>Erdős-class.</strong> Both novelty and difficulty rate ≥ 9 —
-                a research-grade open problem. Posters should expect long-tail
-                attempts à la Liam Price / Erdős #1196.
+                <strong>Research-grade.</strong> Both novelty and difficulty
+                rate ≥ 9 — a long-standing open problem requiring an insight
+                that has resisted experts. Posters should expect long-tail
+                attempts.
               </span>
             </div>
           )}

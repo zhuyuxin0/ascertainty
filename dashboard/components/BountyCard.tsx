@@ -37,9 +37,9 @@ export function BountyCard({ bounty }: { bounty: Bounty }) {
           {bounty.erdos_class === 1 && (
             <span
               className="font-mono text-[10px] uppercase tracking-widest border border-amber bg-amber/15 text-amber px-2 py-0.5"
-              title="Novelty + difficulty both rated ≥ 9 by 0G Compute. Research-grade open problem."
+              title="Novelty + difficulty both rated ≥ 9 by 0G Compute. Long-standing open problem."
             >
-              ✨ Erdős-class
+              ✨ Research-grade
             </span>
           )}
           <span

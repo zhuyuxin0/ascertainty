@@ -182,10 +182,13 @@ def _heuristic_rate(spec: BountySpec) -> dict[str, Any]:
     desc = (spec.description or "") + " " + " ".join(spec.tags)
     desc_l = desc.lower()
     # Novelty heuristic: keyword presence + tag rarity
-    erdos_kw = any(
-        k in desc_l for k in ("erdős", "erdos", "open problem", "conjecture",
-                              "unsolved", "open conjecture", "research")
+    research_kw = any(
+        k in desc_l for k in (
+            "open problem", "conjecture", "unsolved", "open conjecture",
+            "long-standing", "research", "frontier", "hypothesis",
+        )
     )
+    erdos_kw = research_kw  # alias retained internally
     novelty = 9 if erdos_kw else max(2, min(7, len(theorem) // 60 + 3))
     # Difficulty heuristic: theorem length + axiom count
     difficulty = max(2, min(9, len(theorem) // 40 + len(spec.axiom_whitelist)))
@@ -227,6 +230,9 @@ async def formalize_claim(
         return _heuristic_formalize(description, hint_tags)
     client, svc = got
     tags_str = ", ".join(hint_tags) if hint_tags else "(none — infer from claim)"
+    import time as _time
+    now_ts = int(_time.time())
+    default_deadline = now_ts + 86400 * 14  # 14 days from right now
     system = (
         "You are a Lean 4 / Mathlib expert helping a user post a verification "
         "bounty on Ascertainty. Given a plain-English claim, draft a bounty spec "
@@ -244,11 +250,15 @@ async def formalize_claim(
         "    - Classical.choice\n"
         "    - Quot.sound\n"
         "  bounty_usdc: <integer, 6-decimals USDC, e.g. 1000000000 == 1000 USDC>\n"
-        "  deadline_unix: <integer unix-ts, default now + 30 days>\n"
+        "  deadline_unix: <integer unix-ts, MUST be greater than current_unix_time + 7 days>\n"
         "  challenge_window_seconds: <60-3600 depending on difficulty>\n"
         "  tags:\n"
         "    - <2-4 short topic tags>\n"
         "Conventions:\n"
+        f"  - current_unix_time is {now_ts}. deadline_unix MUST be > "
+        f"{now_ts + 86400 * 7}. A reasonable default is {default_deadline} "
+        f"(14 days from now). DO NOT hallucinate older timestamps from your "
+        f"training data.\n"
         "  - bounty_usdc reflects estimated difficulty: 100-1000 USDC for routine, "
         "    1000-10000 for novel, 10000+ for research-grade.\n"
         "  - challenge_window scales with difficulty: 30s for trivial, 600s for "
@@ -256,7 +266,12 @@ async def formalize_claim(
         "  - axiom_whitelist defaults to the standard three; add more only if "
         "    the claim genuinely requires them.\n"
     )
-    user = f"User claim:\n{description}\n\nTag hints: {tags_str}\n\nDraft the spec."
+    user = (
+        f"current_unix_time = {now_ts}\n"
+        f"User claim:\n{description}\n\n"
+        f"Tag hints: {tags_str}\n\n"
+        f"Draft the spec — and remember: deadline_unix must be > {now_ts + 86400 * 7}."
+    )
     try:
         resp = await client.chat.completions.create(
             model=getattr(svc, "model", None),
@@ -309,9 +324,11 @@ async def rate_spec(
         "exists in Mathlib or the prior bounty list provided?\n"
         "  difficulty (1-10): how hard would this be to prove from scratch in "
         "Lean 4, factoring tactic depth, mathlib reach, and likely proof length?\n"
-        "Use the Liam Price / Erdős #1196 result as the anchor for a 10/10: a "
-        "decades-old open problem from a leading number theorist, finally cracked. "
-        "A 5/5 is a routine Mathlib gap. A 1/1 is `theorem t : True := trivial`.\n"
+        "Anchors:\n"
+        "  10/10 = a long-standing open problem in the field, requiring a "
+        "research-grade insight that has resisted experts for years.\n"
+        "  5/5 = a routine Mathlib gap, undergraduate-level proof technique.\n"
+        "  1/1 = `theorem t : True := trivial` or similar.\n"
         "Return ONLY a single JSON object, no fences, with keys:\n"
         '  {"novelty": int, "difficulty": int, "reasoning": "<2-3 sentences>"}'
     )

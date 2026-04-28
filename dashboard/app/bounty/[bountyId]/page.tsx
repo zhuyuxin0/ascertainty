@@ -72,9 +72,9 @@ export default async function BountyDetailPage({
               {bounty.erdos_class === 1 && (
                 <span
                   className="font-mono text-[10px] uppercase tracking-widest border border-amber bg-amber/15 text-amber px-3 py-1"
-                  title="0G Compute rated novelty + difficulty both ≥ 9"
+                  title="0G Compute rated novelty + difficulty both ≥ 9 — long-standing open problem"
                 >
-                  ✨ Erdős-class
+                  ✨ Research-grade
                 </span>
               )}
               {(bounty.novelty != null || bounty.difficulty != null) && (
