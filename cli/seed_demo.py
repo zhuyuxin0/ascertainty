@@ -75,6 +75,19 @@ def submit_proof(base: str, bounty_id: int, solver: str, proof_text: str) -> dic
     })
 
 
+def submit_as_persona(base: str, bounty_id: int, persona_slug: str, proof_text: str) -> dict:
+    """Server-side helper: backend signs the attestation hash with the
+    persona's stored privkey and routes through submitProofFor. Lets the
+    seeded demo races have three distinct on-chain solvers."""
+    return post_json(base, "/bounty/submit", {
+        "bounty_id": bounty_id,
+        "proof": proof_text,
+        "persona_slug": persona_slug,
+        "upload": True,
+        "explain": True,
+    })
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="seed-demo")
     p.add_argument("--base", default="http://127.0.0.1:8000",
@@ -128,10 +141,14 @@ def main(argv: list[str] | None = None) -> int:
         created.append((bid, spec_name, plan))
 
         if plan in ("submit", "settle"):
+            # The 'settle' bounty is solved by Aggressive Andy (he claims first);
+            # 'submit' (still in challenge window) is solved by Careful Carl.
+            persona = "aggressive-andy" if plan == "settle" else "careful-carl"
             try:
-                sub = submit_proof(args.base, bid, args.poster, "theorem t : True := trivial")
+                sub = submit_as_persona(args.base, bid, persona, "theorem t : True := trivial")
                 tx = (sub.get("onchain") or {}).get("tx_hash")
-                print(f"  submitted: result={sub['attestation']['result']} tx={tx[:18] + '...' if tx else 'n/a'}")
+                via = (sub.get("onchain") or {}).get("via", "?")
+                print(f"  {persona} submitted: result={sub['attestation']['result']} via={via} tx={tx[:18] + '...' if tx else 'n/a'}")
             except Exception as e:
                 print(f"  submit failed: {e}")
 

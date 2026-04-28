@@ -156,6 +156,8 @@ async def init_db() -> None:
             cols = {row[1] for row in await cur.fetchall()}
         if "spec_yaml" not in cols:
             await db.execute("ALTER TABLE bounties ADD COLUMN spec_yaml TEXT NOT NULL DEFAULT ''")
+        if "tee_explanation" not in cols:
+            await db.execute("ALTER TABLE bounties ADD COLUMN tee_explanation TEXT")
         # Idempotent migration: add 0G/verifier evidence columns to submissions.
         async with db.execute("PRAGMA table_info(submissions)") as cur:
             sub_cols = {row[1] for row in await cur.fetchall()}
@@ -221,6 +223,15 @@ async def set_bounty_onchain(
         await db.execute(
             "UPDATE bounties SET onchain_bounty_id = ?, tx_hash = ? WHERE id = ?",
             (onchain_bounty_id, tx_hash, bounty_id),
+        )
+        await db.commit()
+
+
+async def set_bounty_explanation(bounty_id: int, explanation: str) -> None:
+    async with _conn() as db:
+        await db.execute(
+            "UPDATE bounties SET tee_explanation = ? WHERE id = ?",
+            (explanation, bounty_id),
         )
         await db.commit()
 

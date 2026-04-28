@@ -83,6 +83,17 @@ export default async function BountyDetailPage({
             </div>
           </div>
 
+          {bounty.tee_explanation && (
+            <div className="border-l-2 border-cyan/40 pl-4 py-2">
+              <div className="font-mono text-[10px] uppercase tracking-widest text-cyan/70 mb-1">
+                0G Compute · TEE-verified spec gloss
+              </div>
+              <p className="font-sans text-sm text-white/85 leading-relaxed">
+                {bounty.tee_explanation}
+              </p>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 font-mono text-xs">
             <Field label="poster">
               <Mono>{bounty.poster}</Mono>

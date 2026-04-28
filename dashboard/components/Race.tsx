@@ -13,7 +13,7 @@ import { CameraRig } from "./CameraRig";
 import { PostFX } from "./PostFX";
 import { BrunoFloor } from "./BrunoFloor";
 import { CityRing } from "./CityRing";
-import { MOCK_GRAPHS, pickGraphForBounty } from "@/lib/mockData";
+import { MOCK_GRAPHS, graphFromSpec, pickGraphForBounty, specFeaturesFromYaml } from "@/lib/mockData";
 import { useRaceEngine, withGhostSolvers, type CarState } from "@/lib/raceEngine";
 import type { TrackGeometry } from "@/lib/trackMapping";
 
@@ -21,15 +21,21 @@ type RaceProps = {
   mode?: "test" | "replay";
   graphKey?: keyof typeof MOCK_GRAPHS;
   bountyId?: number;
+  /** Spec YAML for spec-shape track mapping. When supplied (replay mode),
+   *  the track is derived deterministically from spec metadata. */
+  specYaml?: string;
   onState?: (state: { cars: CarState[]; track: TrackGeometry | null }) => void;
 };
 
-export default function Race({ mode = "test", graphKey, bountyId, onState }: RaceProps) {
+export default function Race({ mode = "test", graphKey, bountyId, specYaml, onState }: RaceProps) {
   const graph = useMemo(() => {
+    if (mode === "replay" && specYaml) {
+      return graphFromSpec(specFeaturesFromYaml(specYaml));
+    }
     if (mode === "replay" && bountyId !== undefined) return pickGraphForBounty(bountyId);
     if (graphKey) return MOCK_GRAPHS[graphKey];
     return MOCK_GRAPHS.sort;
-  }, [mode, graphKey, bountyId]);
+  }, [mode, graphKey, bountyId, specYaml]);
 
   return (
     <Canvas

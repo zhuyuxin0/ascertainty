@@ -29,6 +29,7 @@ export default function RaceForBountyPage({
   const [cars, setCars] = useState<CarState[]>([]);
   const [_track, setTrack] = useState<TrackGeometry | null>(null);
   const [startedAt] = useState<number>(Date.now());
+  const [personas, setPersonas] = useState<Record<string, { name: string; emoji: string; color: string }>>({});
 
   useEffect(() => {
     if (Number.isNaN(bountyId)) return;
@@ -36,6 +37,24 @@ export default function RaceForBountyPage({
       .bountyStatus(bountyId)
       .then((res) => setBounty(res.bounty))
       .catch(() => setBounty(null));
+    // Fetch persona roster for solver-name resolution in HUD + leaderboard
+    fetch(`${api.base}/agent/personas`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!data) return;
+        const map: Record<string, { name: string; emoji: string; color: string }> = {};
+        for (const p of data.personas ?? []) {
+          if (p.address) {
+            map[p.address.toLowerCase()] = {
+              name: p.name,
+              emoji: p.emoji,
+              color: p.color,
+            };
+          }
+        }
+        setPersonas(map);
+      })
+      .catch(() => {});
   }, [bountyId]);
 
   if (Number.isNaN(bountyId)) {
@@ -52,6 +71,7 @@ export default function RaceForBountyPage({
         className="absolute inset-0"
         mode="replay"
         bountyId={bountyId}
+        specYaml={bounty?.spec_yaml ?? undefined}
         onState={(s) => {
           setCars(s.cars);
           setTrack(s.track);
@@ -87,7 +107,7 @@ export default function RaceForBountyPage({
         </button>
       </div>
 
-      <HUD cars={cars} bounty={bounty} startedAt={startedAt} />
+      <HUD cars={cars} bounty={bounty} startedAt={startedAt} personas={personas} />
 
       {cars.length === 0 && (
         <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-10 font-mono text-[10px] text-white/40 uppercase tracking-widest pointer-events-none animate-pulse">

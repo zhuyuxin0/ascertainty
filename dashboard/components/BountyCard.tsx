@@ -49,6 +49,17 @@ export function BountyCard({ bounty }: { bounty: Bounty }) {
 
       <TrackPreview seed={bounty.id} />
 
+      {bounty.tee_explanation && (
+        <div className="border-l-2 border-cyan/30 pl-3 py-1">
+          <div className="font-mono text-[9px] uppercase tracking-widest text-cyan/60 mb-1">
+            0G Compute · TEE
+          </div>
+          <p className="text-xs text-white/70 leading-snug line-clamp-3">
+            {bounty.tee_explanation}
+          </p>
+        </div>
+      )}
+
       <div className="font-mono text-[10px] text-white/40 truncate">
         spec <span className="text-white/70">{bounty.spec_hash.slice(0, 16)}…</span>
       </div>

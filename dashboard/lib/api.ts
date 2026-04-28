@@ -8,6 +8,7 @@ export const API_URL =
 export type Bounty = {
   id: number;
   spec_hash: string;
+  spec_yaml?: string;
   poster: string;
   amount_usdc: string;
   deadline_unix: number;
@@ -16,6 +17,7 @@ export type Bounty = {
   onchain_bounty_id: number | null;
   tx_hash: string | null;
   created_at: number;
+  tee_explanation?: string | null;
 };
 
 export type Submission = {
@@ -72,6 +74,7 @@ async function post<T>(path: string, body: unknown = {}): Promise<T> {
 }
 
 export const api = {
+  base: API_URL,
   stats: () => get<Stats>("/stats"),
   bounties: (limit = 50) =>
     get<{ bounties: Bounty[] }>(`/bounties?limit=${limit}`),

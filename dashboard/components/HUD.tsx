@@ -11,14 +11,18 @@ const STATUS_LABEL: Record<CarState["status"], string> = {
   finished: "finished",
 };
 
+type PersonaInfo = { name: string; emoji: string; color: string };
+
 export function HUD({
   cars,
   bounty,
   startedAt,
+  personas = {},
 }: {
   cars: CarState[];
   bounty?: Bounty | null;
   startedAt?: number;
+  personas?: Record<string, PersonaInfo>;
 }) {
   const sorted = [...cars].sort((a, b) => b.fraction - a.fraction);
   const [elapsed, setElapsed] = useState("00:00");
@@ -64,7 +68,12 @@ export function HUD({
       {sorted.length > 0 && (
         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 flex gap-3 pointer-events-none">
           {sorted.map((car, i) => (
-            <CarChip key={car.solver} car={car} rank={i + 1} />
+            <CarChip
+              key={car.solver}
+              car={car}
+              rank={i + 1}
+              persona={personas[car.solver.toLowerCase()]}
+            />
           ))}
         </div>
       )}
@@ -77,32 +86,43 @@ export function HUD({
   );
 }
 
-function CarChip({ car, rank }: { car: CarState; rank: number }) {
+function CarChip({
+  car,
+  rank,
+  persona,
+}: {
+  car: CarState;
+  rank: number;
+  persona?: PersonaInfo;
+}) {
+  const borderColor = persona?.color ?? car.color;
+  const accentColor = persona?.color ?? car.color;
+  const label = persona
+    ? `${persona.emoji} ${persona.name}`
+    : car.simulated
+      ? "ghost solver"
+      : `${car.solver.slice(0, 10)}…${car.solver.slice(-4)}`;
   return (
     <div
-      className="border border-line bg-bg/80 backdrop-blur px-3 py-2 flex items-center gap-3 min-w-[180px]"
-      style={{ borderColor: car.color }}
+      className="border border-line bg-bg/80 backdrop-blur px-3 py-2 flex items-center gap-3 min-w-[200px]"
+      style={{ borderColor }}
     >
       <span
         className="w-2 h-2 rounded-none shrink-0"
-        style={{ background: car.color }}
+        style={{ background: accentColor }}
       />
       <div className="flex-1 flex flex-col gap-0.5">
         <div className="font-mono text-[10px] uppercase tracking-widest text-white/60 flex justify-between">
           <span>#{rank}{car.simulated && <span className="text-white/30 ml-1">· sim</span>}</span>
           <span>{STATUS_LABEL[car.status]}</span>
         </div>
-        <div className="font-mono text-[11px] text-white/80 truncate">
-          {car.simulated
-            ? "ghost solver"
-            : `${car.solver.slice(0, 10)}…${car.solver.slice(-4)}`}
-        </div>
+        <div className="font-mono text-[11px] text-white/80 truncate">{label}</div>
         <div className="h-0.5 bg-line mt-1">
           <div
             className="h-full transition-all duration-200 ease-out"
             style={{
               width: `${Math.round(car.fraction * 100)}%`,
-              background: car.color,
+              background: accentColor,
             }}
           />
         </div>

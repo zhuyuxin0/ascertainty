@@ -1,4 +1,5 @@
 import { Header } from "@/components/Header";
+import { PersonaCard } from "@/components/PersonaCard";
 import { API_URL } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
@@ -47,10 +48,41 @@ async function loadStatus(): Promise<AgentStatus | null> {
   }
 }
 
+type PersonasResp = {
+  configured: boolean;
+  personas: Array<{
+    slug: string;
+    name: string;
+    emoji: string;
+    color: string;
+    tagline: string;
+    profile: string;
+    axiom_breadth: number;
+    address: string | null;
+    token_id: number | null;
+    storage_root_hash: string | null;
+    descriptor: string | null;
+    version: string | null;
+    minted_at: number | null;
+    reputation: number;
+    solved_count: number;
+  }>;
+};
+
+async function loadPersonas(): Promise<PersonasResp | null> {
+  try {
+    const res = await fetch(`${API_URL}/agent/personas`, { cache: "no-store" });
+    if (!res.ok) return null;
+    return (await res.json()) as PersonasResp;
+  } catch {
+    return null;
+  }
+}
+
 const EXPLORER = "https://chainscan-galileo.0g.ai";
 
 export default async function AgentStatusPage() {
-  const status = await loadStatus();
+  const [status, personas] = await Promise.all([loadStatus(), loadPersonas()]);
 
   return (
     <main className="min-h-screen bg-grid">
@@ -60,9 +92,23 @@ export default async function AgentStatusPage() {
         <p className="font-mono text-xs uppercase tracking-[0.3em] text-cyan">
           ascertainty agent · live status
         </p>
-        <h1 className="text-4xl font-light mt-3 mb-12">
-          all four 0G pillars + KeeperHub, live on Galileo testnet
+        <h1 className="text-4xl font-light mt-3 mb-8">
+          three solver personas + four 0G pillars + KeeperHub, live on Galileo testnet
         </h1>
+
+        {/* Persona roster — Pokemon-card grid */}
+        {personas && personas.personas.length > 0 && (
+          <div className="mb-12">
+            <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-white/40 mb-4">
+              ↓ solver persona iNFTs · each minted from its own wallet
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {personas.personas.map((p) => (
+                <PersonaCard key={p.slug} persona={p} />
+              ))}
+            </div>
+          </div>
+        )}
 
         {status === null ? (
           <div className="border border-amber/40 bg-amber/10 p-6 font-mono text-xs">

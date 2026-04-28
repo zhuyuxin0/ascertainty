@@ -96,3 +96,70 @@ export function pickGraphForBounty(bountyId: string | number): DependencyGraph {
   if (!Number.isNaN(n)) return MOCK_GRAPHS[keys[n % keys.length]];
   return MOCK_GRAPHS.sort;
 }
+
+/** Spec features extracted from the bounty YAML; deterministic seed for the
+ *  procedural graph. */
+export type SpecFeatures = {
+  axiomCount: number;
+  theoremLength: number;
+  mathlibSeed: number;
+  bountyIdSlug: string;
+};
+
+/** Spec-shaped dependency graph: depth ← theorem complexity, branching ← axiom
+ *  whitelist breadth, seed ← mathlib_sha. Stable across re-renders. True Lean4
+ *  proof-term DAG extraction is the natural Phase 2; this maps the surface
+ *  metadata posters already supply. */
+export function graphFromSpec(features: SpecFeatures): DependencyGraph {
+  const depth = clamp(Math.round(features.theoremLength / 35), 4, 14);
+  const branchFactor = clamp(features.axiomCount, 1, 4);
+  let s = features.mathlibSeed >>> 0;
+  const rand = () => {
+    s = (s + 0x6d2b79f5) >>> 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const nodes = Array.from({ length: depth + 1 }, (_, i) => {
+    const isBranch = i > 0 && i < depth && i % Math.max(2, 6 - branchFactor) === 0;
+    const isHard = rand() < 0.18;
+    return {
+      id: `n${i}`,
+      depth: i,
+      branchFactor: isBranch ? Math.min(branchFactor, 3) : 1,
+      hardness: isHard ? 0.3 + rand() * 0.6 : undefined,
+    };
+  });
+  const edges = Array.from({ length: depth }, (_, i) => ({
+    from: `n${i}`,
+    to: `n${i + 1}`,
+  }));
+  return { nodes, edges };
+}
+
+/** Lightweight YAML field extraction — avoids pulling a YAML parser
+ *  into the client bundle just for these four fields. */
+export function specFeaturesFromYaml(yaml: string): SpecFeatures {
+  const inAxiomBlock = /axiom_whitelist:\s*\n((?:[ \t]*-[ \t]+.+\n?)+)/m.exec(yaml);
+  const axiomCount = inAxiomBlock
+    ? (inAxiomBlock[1].match(/^[ \t]*-/gm) ?? []).length
+    : 0;
+  const thmMatch = /theorem_signature:[ \t]*"?([^"\n]+)"?/.exec(yaml);
+  const theoremLength = (thmMatch?.[1] ?? "").length;
+  const shaMatch = /mathlib_sha:[ \t]*([0-9a-fA-F]+)/.exec(yaml);
+  const mathlibSeed = shaMatch
+    ? parseInt((shaMatch[1] + "00000000").slice(0, 8), 16)
+    : 0xdeadbeef;
+  const idMatch = /bounty_id:[ \t]*([^\s]+)/.exec(yaml);
+  return {
+    axiomCount,
+    theoremLength,
+    mathlibSeed,
+    bountyIdSlug: idMatch?.[1] ?? "unknown",
+  };
+}
+
+function clamp(n: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, n));
+}

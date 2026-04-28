@@ -145,5 +145,45 @@ async def explain_verification(
         return None
 
 
+async def explain_spec(spec: BountySpec) -> Optional[str]:
+    """Pre-emptive 2-sentence explanation of a bounty spec, used at creation
+    time so every bounty card carries a TEE-verified gloss before the first
+    submission lands. None if unavailable."""
+    got = await _ensure_client()
+    if got is None:
+        return None
+    client, svc = got
+    user = (
+        f"Bounty: {spec.bounty_id}\n"
+        f"Theorem: {spec.theorem_signature}\n"
+        f"Description: {spec.description}\n"
+        f"Mathlib SHA: {spec.mathlib_sha}\n"
+        f"Axiom whitelist: {', '.join(spec.axiom_whitelist)}\n"
+        f"Reward: {spec.bounty_usdc / 1_000_000} MockUSDC"
+    )
+    system = (
+        "You are a verification-bounty analyst. Given a Lean4 bounty spec, "
+        "explain in EXACTLY 2 sentences why this claim matters and what it "
+        "would take to prove. Audience: technical readers who don't know Lean. "
+        "Be concrete; no marketing fluff. Output the 2 sentences only — no "
+        "preamble."
+    )
+    try:
+        resp = await client.chat.completions.create(
+            model=getattr(svc, "model", None),
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            max_tokens=160,
+            temperature=0.3,
+        )
+        text = resp.choices[0].message.content
+        return text.strip() if text else None
+    except Exception as e:
+        log.warning("compute: explain_spec failed: %s", e)
+        return None
+
+
 def is_available() -> bool:
     return _async_client is not None and not _disabled

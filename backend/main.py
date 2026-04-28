@@ -20,12 +20,13 @@ from backend import (
     keeperhub,
     og_chain,
     og_storage,
+    personas,
     publisher,
     telegram_bot,
     watcher,
 )
 from backend.attestation import build_attestation, sign_attestation
-from backend.og_compute import explain_verification
+from backend.og_compute import explain_spec, explain_verification
 from backend.og_storage import upload_attestation
 from backend.spec import SpecError, parse_spec, spec_hash
 from backend.verifier import verify
@@ -46,8 +47,9 @@ async def lifespan(app: FastAPI):
     if og_chain.is_configured():
         _tasks.append(asyncio.create_task(watcher.watcher_task(), name="watcher"))
         _tasks.append(asyncio.create_task(claim_task.claim_task(), name="claim"))
-        # iNFT mint runs once at startup, idempotent. Best-effort.
+        # iNFT mints run once at startup, idempotent. Best-effort.
         _tasks.append(asyncio.create_task(inft.init(), name="inft_init"))
+        _tasks.append(asyncio.create_task(personas.init(), name="personas_init"))
     if os.getenv("TELEGRAM_BOT_TOKEN"):
         _tasks.append(asyncio.create_task(telegram_bot.telegram_task(), name="telegram"))
     if os.getenv("ALCHEMY_API_KEY") or os.getenv("ALCHEMY_WS_URL"):
@@ -160,6 +162,13 @@ async def create_bounty(body: CreateBountyBody) -> dict[str, Any]:
     if bounty_id is None:
         raise HTTPException(status_code=409, detail="bounty with this spec_hash already exists")
 
+    # Pre-emptive TEE explanation: generate at creation time so every bounty
+    # card carries a 2-sentence gloss before the first submission lands.
+    # Best-effort; if 0G Compute is down the bounty still creates.
+    explanation = await explain_spec(spec)
+    if explanation:
+        await db.set_bounty_explanation(bounty_id, explanation)
+
     onchain_field = None
     if body.tx_hash:
         # Wallet-driven path: client already broadcast the createBounty tx.
@@ -218,13 +227,16 @@ async def create_bounty(body: CreateBountyBody) -> dict[str, Any]:
         "bounty_usdc": spec.bounty_usdc,
         "deadline_unix": spec.deadline_unix,
         "challenge_window_seconds": spec.challenge_window_seconds,
+        "tee_explanation": explanation,
         "onchain": onchain_field,
     }
 
 
 class SubmitProofBody(BaseModel):
     bounty_id: int
-    solver_address: str
+    # solver_address is required when signature is set. When persona_slug is
+    # set, the server overrides this with the persona's address.
+    solver_address: str | None = None
     proof: str
     upload: bool = True
     explain: bool = True
@@ -237,6 +249,12 @@ class SubmitProofBody(BaseModel):
     # operator-as-solver via BountyFactory.submitProof.
     signature: str | None = None
     attestation_hash: str | None = None
+    # Demo helper: when set to "aggressive-andy" / "careful-carl" / "balanced-bea",
+    # the server signs the attestation hash with that persona's stored
+    # private key and routes through submitProofFor. Lets the seed script
+    # populate races with three distinct on-chain solvers without each
+    # persona needing to be a wagmi-connected wallet.
+    persona_slug: str | None = None
 
 
 @app.post("/bounty/submit")
@@ -255,7 +273,49 @@ async def submit_proof(body: SubmitProofBody) -> dict[str, Any]:
     result = await verify(spec_for_verify, body.proof)
     unsigned = build_attestation(spec_for_verify, result)
     signed = sign_attestation(unsigned, private_key)
-    if body.signature and not body.attestation_hash:
+
+    # Server-side persona shortcut: if persona_slug is set, the server signs
+    # the attestation hash with the persona's stored privkey and switches to
+    # the submitProofFor relay path. This keeps the demo seeding flow honest
+    # (three distinct on-chain solvers) without requiring three connected
+    # wagmi wallets.
+    persona_signature: str | None = None
+    persona_address: str | None = None
+    if body.persona_slug:
+        persona = next(
+            (p for p in personas.get_state()["personas"] if p["slug"] == body.persona_slug),
+            None,
+        )
+        if persona is None or not persona.get("private_key"):
+            raise HTTPException(status_code=400, detail=f"unknown persona slug: {body.persona_slug}")
+        persona_address = persona["address"]
+        if bounty.get("onchain_bounty_id") and publisher.is_configured():
+            from eth_account import Account
+            from eth_account.messages import encode_defunct
+            attest_bytes = bytes.fromhex(signed["attestation_hash"])
+            message_hash = publisher.build_submit_proof_message(
+                onchain_bounty_id=bounty["onchain_bounty_id"],
+                attestation_hash=attest_bytes,
+            )
+            signed_msg = Account.from_key(persona["private_key"]).sign_message(
+                encode_defunct(message_hash)
+            )
+            persona_signature = "0x" + signed_msg.signature.hex()
+
+    # Resolve effective solver_address + signature precedence:
+    # explicit body.signature > persona > operator-as-solver fallback
+    effective_solver = body.solver_address
+    effective_signature = body.signature
+    effective_attestation_hash = body.attestation_hash
+    if body.persona_slug and persona_signature:
+        effective_solver = persona_address
+        effective_signature = persona_signature
+        effective_attestation_hash = "0x" + signed["attestation_hash"]
+    if effective_solver is None:
+        # Final fallback: operator wallet (legacy demo path)
+        effective_solver = og_chain.get_account().address
+
+    if effective_signature and not effective_attestation_hash:
         raise HTTPException(
             status_code=400,
             detail="signature requires attestation_hash (the 32-byte hash the solver signed)",
@@ -280,10 +340,10 @@ async def submit_proof(body: SubmitProofBody) -> dict[str, Any]:
         explanation = await explain_verification(spec_for_verify, result)
 
     now = int(time.time())
-    await db.upsert_solver(address=body.solver_address, ts=now)
+    await db.upsert_solver(address=effective_solver, ts=now)
     submission_id = await db.insert_submission(
         bounty_id=body.bounty_id,
-        solver_address=body.solver_address,
+        solver_address=effective_solver,
         attestation_hash=signed["attestation_hash"],
         proof_hash=result.proof_hash,
         accepted=result.accepted,
@@ -298,16 +358,13 @@ async def submit_proof(body: SubmitProofBody) -> dict[str, Any]:
 
     onchain_field = None
     if result.accepted and bounty.get("onchain_bounty_id") and publisher.is_configured():
-        if body.signature:
-            # Use the client's attestation hash (what the solver actually
-            # signed). The server's freshly-built attestation is still
-            # stored in the DB submission for transparency / explanation.
-            attestation_bytes = bytes.fromhex(body.attestation_hash.removeprefix("0x"))
-            sig = bytes.fromhex(body.signature.removeprefix("0x"))
+        if effective_signature:
+            attestation_bytes = bytes.fromhex(effective_attestation_hash.removeprefix("0x"))
+            sig = bytes.fromhex(effective_signature.removeprefix("0x"))
             onchain = await publisher.submit_proof_for_onchain(
                 onchain_bounty_id=bounty["onchain_bounty_id"],
                 attestation_hash=attestation_bytes,
-                solver=body.solver_address,
+                solver=effective_solver,
                 signature=sig,
             )
         else:
@@ -322,7 +379,7 @@ async def submit_proof(body: SubmitProofBody) -> dict[str, Any]:
             onchain_field = {
                 "tx_hash": onchain.tx_hash,
                 "block_number": onchain.block_number,
-                "via": "submitProofFor" if body.signature else "submitProof",
+                "via": "submitProofFor" if effective_signature else "submitProof",
             }
 
     keeperhub_field = None
@@ -331,7 +388,7 @@ async def submit_proof(body: SubmitProofBody) -> dict[str, Any]:
         kh_inputs = {
             "bountyId": bounty.get("onchain_bounty_id"),
             "attestationHash": signed["attestation_hash"],
-            "solver": body.solver_address,
+            "solver": effective_solver,
         }
         kh_resp = await keeperhub.execute_oneoff(workflow_id, kh_inputs)
         execution_id = None
@@ -508,5 +565,44 @@ async def agent_status() -> dict[str, Any]:
             "recent_executions": kh_recent,
         },
     }
+
+
+@app.get("/agent/personas")
+async def agent_personas() -> dict[str, Any]:
+    """Persona iNFT roster + reputation lookup for each persona's address.
+    The dashboard renders these as Pokemon-style cards on /agent."""
+    state = personas.get_state()
+    out = []
+    if og_chain.is_configured():
+        registry = og_chain.get_registry()
+        for p in state["personas"]:
+            addr = p.get("address")
+            reputation = 0
+            solved = 0
+            if addr:
+                try:
+                    reputation = int(await registry.functions.reputation(addr).call())
+                    solved = int(await registry.functions.solvedCount(addr).call())
+                except Exception:
+                    pass
+            out.append({
+                # Note: deliberately omit private_key from the API response
+                "slug": p["slug"],
+                "name": p["name"],
+                "emoji": p["emoji"],
+                "color": p["color"],
+                "tagline": p["tagline"],
+                "profile": p["profile"],
+                "axiom_breadth": p["axiom_breadth"],
+                "address": p.get("address"),
+                "token_id": p.get("token_id"),
+                "storage_root_hash": p.get("storage_root_hash"),
+                "descriptor": p.get("descriptor"),
+                "version": p.get("version"),
+                "minted_at": p.get("minted_at"),
+                "reputation": reputation,
+                "solved_count": solved,
+            })
+    return {"configured": state["configured"], "personas": out}
 
 
