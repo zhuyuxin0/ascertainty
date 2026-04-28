@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { BountyCard } from "@/components/BountyCard";
+import { Header } from "@/components/Header";
 import { api, type Bounty } from "@/lib/api";
 
 // Always fetch fresh from the backend
@@ -23,21 +24,7 @@ export default async function BountiesPage() {
 
   return (
     <main className="min-h-screen bg-grid">
-      <header className="border-b border-line">
-        <div className="max-w-6xl mx-auto px-6 py-5 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-3">
-            <div className="w-2 h-2 bg-cyan rounded-none" />
-            <span className="font-mono text-sm tracking-widest uppercase">
-              Ascertainty
-            </span>
-          </Link>
-          <nav className="flex gap-6 font-mono text-xs uppercase tracking-widest text-white/60">
-            <Link href="/bounties" className="text-cyan">Bounties</Link>
-            <Link href="/leaderboard" className="hover:text-cyan">Leaderboard</Link>
-            <Link href="/agent" className="hover:text-cyan">Agent</Link>
-          </nav>
-        </div>
-      </header>
+      <Header active="bounties" />
 
       <section className="max-w-6xl mx-auto px-6 pt-16 pb-24">
         <div className="flex items-end justify-between mb-12">

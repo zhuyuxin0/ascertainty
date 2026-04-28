@@ -41,7 +41,7 @@ export function BountyCard({ bounty }: { bounty: Bounty }) {
       </div>
 
       <div>
-        <div className="font-mono text-2xl text-cyan">{usdc} USDC</div>
+        <div className="font-mono text-2xl text-cyan">{usdc} MockUSDC</div>
         <div className="font-mono text-[10px] uppercase tracking-widest text-white/40 mt-1">
           {daysLeft > 0 ? `${daysLeft}d to deadline` : "deadline passed"}
         </div>

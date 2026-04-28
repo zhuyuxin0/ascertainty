@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { Header } from "@/components/Header";
 import { API_URL } from "@/lib/api";
 
 const SPEC_TEMPLATES: Record<string, string> = {
@@ -104,28 +105,14 @@ export default function NewBountyPage() {
 
   return (
     <main className="min-h-screen bg-grid">
-      <header className="border-b border-line">
-        <div className="max-w-6xl mx-auto px-6 py-5 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-3">
-            <div className="w-2 h-2 bg-cyan rounded-none" />
-            <span className="font-mono text-sm tracking-widest uppercase">
-              Ascertainty
-            </span>
-          </Link>
-          <nav className="flex gap-6 font-mono text-xs uppercase tracking-widest text-white/60">
-            <Link href="/bounties" className="hover:text-cyan">Bounties</Link>
-            <Link href="/leaderboard" className="hover:text-cyan">Leaderboard</Link>
-            <Link href="/agent" className="hover:text-cyan">Agent</Link>
-          </nav>
-        </div>
-      </header>
+      <Header active="bounties" />
 
       <section className="max-w-4xl mx-auto px-6 pt-16 pb-24">
         <p className="font-mono text-xs uppercase tracking-[0.3em] text-cyan">
           new bounty
         </p>
         <h1 className="text-4xl font-light mt-3 mb-12">
-          escrow USDC for a verifiable claim
+          escrow MockUSDC for a verifiable claim
         </h1>
 
         {created ? (

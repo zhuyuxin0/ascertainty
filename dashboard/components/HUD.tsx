@@ -41,7 +41,10 @@ export function HUD({
       {bounty && (
         <div className="absolute top-4 right-6 z-10 font-mono text-right pointer-events-none">
           <div className="text-cyan text-sm uppercase tracking-widest">
-            {fmtUsdc(bounty.amount_usdc)} USDC
+            {fmtUsdc(bounty.amount_usdc)} MockUSDC
+          </div>
+          <div className="text-amber/80 text-[9px] uppercase tracking-widest mt-0.5">
+            0G Galileo · Testnet
           </div>
           <div className="text-white/40 text-[10px] uppercase tracking-widest mt-1">
             spec {bounty.spec_hash.slice(0, 12)}…

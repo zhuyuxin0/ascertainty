@@ -1,45 +1,27 @@
 import Link from "next/link";
 import SceneCanvas from "@/components/SceneCanvas";
 import { LiveCounter } from "@/components/LiveCounter";
+import { Header } from "@/components/Header";
 
 export default function HomePage() {
   return (
     <main className="min-h-screen bg-grid relative overflow-hidden">
-      <header className="border-b border-line">
-        <div className="max-w-6xl mx-auto px-6 py-5 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-2 h-2 bg-cyan rounded-none" />
-            <span className="font-mono text-sm tracking-widest uppercase">
-              Ascertainty
-            </span>
-          </div>
-          <nav className="flex gap-6 font-mono text-xs uppercase tracking-widest text-white/60">
-            <Link href="/bounties" className="hover:text-cyan">Bounties</Link>
-            <Link href="/leaderboard" className="hover:text-cyan">Leaderboard</Link>
-            <Link href="/agent" className="hover:text-cyan">Agent</Link>
-            <Link
-              href="https://github.com/zhuyuxin0/ascertainty"
-              className="hover:text-cyan"
-            >
-              GitHub
-            </Link>
-          </nav>
-        </div>
-      </header>
+      <Header />
 
       <section className="max-w-6xl mx-auto px-6 pt-24 pb-32 flex flex-col gap-12">
         <div className="flex flex-col gap-6 max-w-3xl">
           <p className="font-mono text-xs uppercase tracking-[0.3em] text-cyan">
-            Verification oracle · 0G Galileo · ETHGlobal Open Agents 2026
+            Verification oracle · 0G Galileo testnet · ETHGlobal Open Agents 2026
           </p>
           <h1 className="text-5xl md:text-7xl font-sans font-light leading-[1.05]">
             Where proofs <span className="text-cyan">pay</span>.
           </h1>
           <p className="text-lg text-white/70 font-sans max-w-2xl leading-relaxed">
             Formal proofs and engineering predictions are verified
-            deterministically, settled in USDC, and visualized as real-time 3D
-            racing. The verification creates competition. The competition
-            creates spectacle. The spectacle creates a market.
+            deterministically, settled in <span className="text-cyan">MockUSDC</span>{" "}
+            on 0G Galileo testnet, and visualized as real-time 3D racing.
+            The verification creates competition. The competition creates
+            spectacle. The spectacle creates a market.
           </p>
         </div>
 

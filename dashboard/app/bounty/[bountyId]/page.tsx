@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { Header } from "@/components/Header";
 import { API_URL, type Bounty, type Submission } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
@@ -47,19 +48,7 @@ export default async function BountyDetailPage({
 
   return (
     <main className="min-h-screen bg-grid">
-      <header className="border-b border-line">
-        <div className="max-w-6xl mx-auto px-6 py-5 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-3">
-            <div className="w-2 h-2 bg-cyan rounded-none" />
-            <span className="font-mono text-sm tracking-widest uppercase">Ascertainty</span>
-          </Link>
-          <nav className="flex gap-6 font-mono text-xs uppercase tracking-widest text-white/60">
-            <Link href="/bounties" className="hover:text-cyan">Bounties</Link>
-            <Link href="/leaderboard" className="hover:text-cyan">Leaderboard</Link>
-            <Link href="/agent" className="hover:text-cyan">Agent</Link>
-          </nav>
-        </div>
-      </header>
+      <Header active="bounties" />
 
       <section className="max-w-5xl mx-auto px-6 pt-12 pb-24">
         <Link
@@ -86,7 +75,7 @@ export default async function BountyDetailPage({
           </div>
 
           <div>
-            <div className="font-mono text-4xl text-cyan">{usdc} USDC</div>
+            <div className="font-mono text-4xl text-cyan">{usdc} MockUSDC</div>
             <div className="font-mono text-xs text-white/40 mt-1">
               deadline {deadline.toISOString().slice(0, 19).replace("T", " ")}Z · challenge window{" "}
               {bounty.challenge_window_seconds}s
