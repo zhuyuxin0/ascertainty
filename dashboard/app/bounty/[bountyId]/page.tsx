@@ -68,11 +68,26 @@ export default async function BountyDetailPage({
                 <span className="text-cyan/60"> · on-chain {bounty.onchain_bounty_id}</span>
               )}
             </span>
-            <span
-              className={`font-mono text-[10px] uppercase tracking-widest border px-3 py-1 ${statusClass}`}
-            >
-              {bounty.status}
-            </span>
+            <div className="flex items-center gap-2">
+              {bounty.erdos_class === 1 && (
+                <span
+                  className="font-mono text-[10px] uppercase tracking-widest border border-amber bg-amber/15 text-amber px-3 py-1"
+                  title="0G Compute rated novelty + difficulty both ≥ 9"
+                >
+                  ✨ Erdős-class
+                </span>
+              )}
+              {(bounty.novelty != null || bounty.difficulty != null) && (
+                <span className="font-mono text-[10px] uppercase tracking-widest text-white/60">
+                  N {bounty.novelty ?? "?"} · D {bounty.difficulty ?? "?"}
+                </span>
+              )}
+              <span
+                className={`font-mono text-[10px] uppercase tracking-widest border px-3 py-1 ${statusClass}`}
+              >
+                {bounty.status}
+              </span>
+            </div>
           </div>
 
           <div>
@@ -115,10 +130,10 @@ export default async function BountyDetailPage({
 
           <div className="flex gap-3 pt-2">
             <Link
-              href={`/race/${bounty.id}`}
+              href={`/mission/${bounty.id}`}
               className="border border-cyan text-cyan px-5 py-2 font-mono text-xs uppercase tracking-widest hover:bg-cyan hover:text-bg transition-colors"
             >
-              watch race →
+              mission control →
             </Link>
           </div>
         </div>

@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { type Address, formatUnits, maxUint256 } from "viem";
 import { useAccount, useReadContract, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 
+import { BountyAssistant } from "@/components/BountyAssistant";
 import { Header } from "@/components/Header";
 import { API_URL } from "@/lib/api";
 import { BOUNTY_FACTORY_ABI, MOCK_USDC_ABI } from "@/lib/contracts";
@@ -252,15 +253,23 @@ export default function NewBountyPage() {
                 view bounty →
               </Link>
               <Link
-                href={`/race/${created.bountyId}`}
+                href={`/mission/${created.bountyId}`}
                 className="border border-line text-white/60 px-5 py-2 text-xs uppercase tracking-widest hover:border-white/40 hover:text-white"
               >
-                race
+                mission control
               </Link>
             </div>
           </div>
         ) : (
           <div className="flex flex-col gap-6">
+            <BountyAssistant
+              specYaml={specYaml}
+              setSpecYaml={(y) => {
+                setSpecYaml(y);
+                setPrepared(null);
+              }}
+            />
+
             <div>
               <label className="block font-mono text-[10px] uppercase tracking-widest text-white/60 mb-2">
                 quick fill template

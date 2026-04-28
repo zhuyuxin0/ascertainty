@@ -158,6 +158,14 @@ async def init_db() -> None:
             await db.execute("ALTER TABLE bounties ADD COLUMN spec_yaml TEXT NOT NULL DEFAULT ''")
         if "tee_explanation" not in cols:
             await db.execute("ALTER TABLE bounties ADD COLUMN tee_explanation TEXT")
+        for bcol, btype in (
+            ("novelty", "INTEGER"),
+            ("difficulty", "INTEGER"),
+            ("erdos_class", "INTEGER"),
+            ("rating_reasoning", "TEXT"),
+        ):
+            if bcol not in cols:
+                await db.execute(f"ALTER TABLE bounties ADD COLUMN {bcol} {btype}")
         # Idempotent migration: add 0G/verifier evidence columns to submissions.
         async with db.execute("PRAGMA table_info(submissions)") as cur:
             sub_cols = {row[1] for row in await cur.fetchall()}
@@ -234,6 +242,24 @@ async def set_bounty_explanation(bounty_id: int, explanation: str) -> None:
         await db.execute(
             "UPDATE bounties SET tee_explanation = ? WHERE id = ?",
             (explanation, bounty_id),
+        )
+        await db.commit()
+
+
+async def set_bounty_rating(
+    bounty_id: int,
+    *,
+    novelty: int,
+    difficulty: int,
+    erdos_class: bool,
+    reasoning: str,
+) -> None:
+    async with _conn() as db:
+        await db.execute(
+            """UPDATE bounties
+               SET novelty = ?, difficulty = ?, erdos_class = ?, rating_reasoning = ?
+               WHERE id = ?""",
+            (novelty, difficulty, 1 if erdos_class else 0, reasoning, bounty_id),
         )
         await db.commit()
 

@@ -33,12 +33,32 @@ export function BountyCard({ bounty }: { bounty: Bounty }) {
             <span className="text-cyan/60"> · on-chain {bounty.onchain_bounty_id}</span>
           )}
         </span>
-        <span
-          className={`font-mono text-[10px] uppercase tracking-widest border px-2 py-0.5 ${statusClass}`}
-        >
-          {bounty.status}
-        </span>
+        <div className="flex gap-1.5">
+          {bounty.erdos_class === 1 && (
+            <span
+              className="font-mono text-[10px] uppercase tracking-widest border border-amber bg-amber/15 text-amber px-2 py-0.5"
+              title="Novelty + difficulty both rated ≥ 9 by 0G Compute. Research-grade open problem."
+            >
+              ✨ Erdős-class
+            </span>
+          )}
+          <span
+            className={`font-mono text-[10px] uppercase tracking-widest border px-2 py-0.5 ${statusClass}`}
+          >
+            {bounty.status}
+          </span>
+        </div>
       </div>
+      {(bounty.novelty != null || bounty.difficulty != null) && (
+        <div className="flex gap-3 font-mono text-[10px] text-white/50">
+          <span>
+            novelty <span className="text-cyan">{bounty.novelty ?? "—"}</span>/10
+          </span>
+          <span>
+            difficulty <span className="text-cyan">{bounty.difficulty ?? "—"}</span>/10
+          </span>
+        </div>
+      )}
 
       <div>
         <div className="font-mono text-2xl text-cyan">{usdc} MockUSDC</div>

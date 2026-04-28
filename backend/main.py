@@ -27,7 +27,12 @@ from backend import (
     watcher,
 )
 from backend.attestation import build_attestation, sign_attestation
-from backend.og_compute import explain_spec, explain_verification
+from backend.og_compute import (
+    explain_spec,
+    explain_verification,
+    formalize_claim,
+    rate_spec,
+)
 from backend.og_storage import upload_attestation
 from backend.spec import SpecError, parse_spec, spec_hash
 from backend.verifier import verify
@@ -115,6 +120,135 @@ class PrepareCreateBody(BaseModel):
     spec_yaml: str
 
 
+class FormalizeBody(BaseModel):
+    description: str
+    tags: list[str] | None = None
+
+
+@app.post("/bounty/assist/formalize")
+async def assist_formalize(body: FormalizeBody) -> dict[str, Any]:
+    """Plain-English claim → draft Lean 4 bounty spec via 0G Compute (TEE).
+    Frontend pipes the result into the spec textarea; user reviews/edits
+    before posting. Returns 503 if 0G Compute is unavailable so the UI
+    can surface a clear error."""
+    if not body.description.strip():
+        raise HTTPException(status_code=400, detail="description is required")
+    result = await formalize_claim(body.description, body.tags)
+    if result is None:
+        raise HTTPException(
+            status_code=503,
+            detail="0G Compute autoformalize unavailable — try again or write the YAML manually",
+        )
+    # Validate the LLM output parses; if not, surface the raw YAML so the
+    # user can fix it inline rather than losing the suggestion entirely.
+    spec_yaml = result["spec_yaml"]
+    parse_error: str | None = None
+    try:
+        raw = yaml.safe_load(spec_yaml)
+        if isinstance(raw, dict):
+            parse_spec(raw)
+        else:
+            parse_error = "LLM output is not a YAML mapping"
+    except (SpecError, yaml.YAMLError) as e:
+        parse_error = str(e)
+    return {"spec_yaml": spec_yaml, "parse_error": parse_error}
+
+
+class RateBody(BaseModel):
+    spec_yaml: str
+
+
+@app.post("/bounty/assist/rate")
+async def assist_rate(body: RateBody) -> dict[str, Any]:
+    """Score the spec on novelty + difficulty (1-10 each), classify Erdős-tier,
+    return a deterministic post/refine/reject recommendation."""
+    try:
+        raw = yaml.safe_load(body.spec_yaml)
+        if not isinstance(raw, dict):
+            raise SpecError("spec_yaml must be a YAML mapping")
+        spec = parse_spec(raw)
+    except (SpecError, yaml.YAMLError) as e:
+        raise HTTPException(status_code=400, detail=f"invalid spec: {e}")
+
+    prior = await db.latest_bounties(limit=20)
+    rating = await rate_spec(spec, prior)
+    if rating is None:
+        raise HTTPException(
+            status_code=503,
+            detail="0G Compute rating unavailable",
+        )
+    return rating
+
+
+@app.post("/bounty/assist/check-duplicate")
+async def assist_check_duplicate(body: RateBody) -> dict[str, Any]:
+    """Detect spec collisions + near-duplicates against existing bounties.
+    Exact spec_hash collision is a hard duplicate; theorem-text edit
+    distance < 0.15 is a soft duplicate worth flagging."""
+    try:
+        raw = yaml.safe_load(body.spec_yaml)
+        if not isinstance(raw, dict):
+            raise SpecError("spec_yaml must be a YAML mapping")
+        spec = parse_spec(raw)
+    except (SpecError, yaml.YAMLError) as e:
+        raise HTTPException(status_code=400, detail=f"invalid spec: {e}")
+
+    h = spec_hash(spec)
+    duplicates: list[dict[str, Any]] = []
+    exact = await db.get_bounty_by_spec_hash(h)
+    if exact is not None:
+        duplicates.append({
+            "bounty_id": exact["id"],
+            "similarity": 1.0,
+            "kind": "exact",
+            "theorem": (
+                yaml.safe_load(exact.get("spec_yaml") or "") or {}
+            ).get("theorem_signature", ""),
+        })
+
+    # Soft-duplicate: normalized Jaccard on token sets of theorem signatures
+    candidate_tokens = set(_tokenize(spec.theorem_signature))
+    if candidate_tokens:
+        for prior in await db.latest_bounties(limit=50):
+            if prior["spec_hash"] == h:
+                continue
+            try:
+                prior_spec = parse_spec(yaml.safe_load(prior["spec_yaml"]) or {})
+            except Exception:
+                continue
+            prior_tokens = set(_tokenize(prior_spec.theorem_signature))
+            if not prior_tokens:
+                continue
+            inter = candidate_tokens & prior_tokens
+            union = candidate_tokens | prior_tokens
+            sim = len(inter) / len(union) if union else 0
+            if sim > 0.7:
+                duplicates.append({
+                    "bounty_id": prior["id"],
+                    "similarity": round(sim, 2),
+                    "kind": "near",
+                    "theorem": prior_spec.theorem_signature,
+                })
+
+    duplicates.sort(key=lambda d: -d["similarity"])
+    return {
+        "duplicates": duplicates[:5],
+        "warning_level": (
+            "block" if any(d["kind"] == "exact" for d in duplicates)
+            else "warn" if duplicates
+            else "ok"
+        ),
+    }
+
+
+def _tokenize(s: str) -> list[str]:
+    """Cheap lexical tokenizer — splits on whitespace + Lean punctuation,
+    drops 1-char tokens. Good enough for Jaccard similarity on theorem
+    signatures."""
+    import re
+    return [t for t in re.split(r"[\s(){}\[\]:,.;]+", s.lower()) if len(t) > 1]
+
+
 @app.post("/bounty/prepare-create")
 async def prepare_create(body: PrepareCreateBody) -> dict[str, Any]:
     """Return on-chain call args (specHash, amount, deadline, challengeWindow)
@@ -169,6 +303,22 @@ async def create_bounty(body: CreateBountyBody) -> dict[str, Any]:
     explanation = await explain_spec(spec)
     if explanation:
         await db.set_bounty_explanation(bounty_id, explanation)
+    # Pre-emptive AI rating: novelty + difficulty + Erdős classification.
+    # Same 0G Compute client; failure is silent so the create succeeds.
+    rating = None
+    try:
+        prior = await db.latest_bounties(limit=20)
+        rating = await rate_spec(spec, prior)
+        if rating:
+            await db.set_bounty_rating(
+                bounty_id,
+                novelty=rating["novelty"],
+                difficulty=rating["difficulty"],
+                erdos_class=rating["erdos_class"],
+                reasoning=rating["reasoning"],
+            )
+    except Exception:
+        pass
 
     onchain_field = None
     if body.tx_hash:
@@ -229,6 +379,7 @@ async def create_bounty(body: CreateBountyBody) -> dict[str, Any]:
         "deadline_unix": spec.deadline_unix,
         "challenge_window_seconds": spec.challenge_window_seconds,
         "tee_explanation": explanation,
+        "rating": rating,
         "onchain": onchain_field,
     }
 

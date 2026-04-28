@@ -18,6 +18,10 @@ export type Bounty = {
   tx_hash: string | null;
   created_at: number;
   tee_explanation?: string | null;
+  novelty?: number | null;
+  difficulty?: number | null;
+  erdos_class?: number | null;
+  rating_reasoning?: string | null;
 };
 
 export type Submission = {
