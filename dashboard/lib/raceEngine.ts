@@ -146,38 +146,52 @@ function safeParse(s: string): Record<string, unknown> {
   }
 }
 
-const GHOST_COLORS = ["#8b5cf6", "#f59e0b"]; // purple + amber-orange
-const GHOST_ADDRESSES = [
-  "0xGH05T0000000000000000000000000000000A001",
-  "0xGH05T0000000000000000000000000000000B002",
+/**
+ * Augment the real-solver car set with the OTHER personas (the ones who
+ * didn't submit to this particular bounty) as visual competitors. The
+ * BountyFactory contract today permits only one solver per bounty, so
+ * the live race has at most one real car — but having Carl and Bea
+ * appear as live competitors in Andy's race tells the right story:
+ * three on-chain solver agents are competing for every bounty, the
+ * winner just lands the submission.
+ *
+ * Personas-as-ghosts: each non-leading persona renders with their real
+ * on-chain address + persona color, so the HUD's address→persona map
+ * surfaces them by name (not as anonymous hex). They're flagged
+ * `simulated: true` so the HUD still adds the `sim` indicator —
+ * honest about the fact that they didn't submit, just visualised.
+ *
+ * Falls back to anonymous ghost cars when no persona roster is
+ * available (during initial page load before /agent/personas resolves).
+ */
+type RacePersona = {
+  address: string;
+  color: string;
+};
+
+const FALLBACK_GHOSTS: RacePersona[] = [
+  { address: "0xGH05T0000000000000000000000000000000A001", color: "#8b5cf6" },
+  { address: "0xGH05T0000000000000000000000000000000B002", color: "#f59e0b" },
 ];
 
-/**
- * Augment the real-solver car set with deterministic "ghost" competitors
- * for visual richness during the demo. A bounty's contract today only
- * permits one solver, so the live race set has at most one car — adding
- * two ghost cars makes the scene feel like the multi-solver future.
- *
- * Ghosts only appear when at least one REAL car exists (so empty bounties
- * don't show fake activity), and never finish ahead of the real lead
- * car (so they read as competitors, not winners).
- *
- * Each ghost has `simulated: true` so the HUD can clearly tag them.
- */
 export function withGhostSolvers(
   realCars: CarState[],
   bountyId: number,
+  personas: RacePersona[] = [],
 ): CarState[] {
   if (realCars.length === 0) return realCars;
   const lead = realCars.reduce((a, b) => (a.fraction > b.fraction ? a : b));
-  // Two ghost cars, deterministically offset behind the leader
-  const ghosts: CarState[] = GHOST_ADDRESSES.map((addr, i) => {
-    const offset = (i + 1) * 0.07; // ghost 0 is 7% behind, ghost 1 is 14% behind
+  const realAddrs = new Set(realCars.map((c) => c.solver.toLowerCase()));
+  const candidates = (personas.length > 0 ? personas : FALLBACK_GHOSTS).filter(
+    (p) => !realAddrs.has(p.address.toLowerCase()),
+  );
+  const ghosts: CarState[] = candidates.slice(0, 2).map((p, i) => {
+    const offset = (i + 1) * 0.07; // 7% then 14% behind the leader
     const wiggle = Math.sin(Date.now() * 0.0008 + bountyId * 1.7 + i * 2.1) * 0.02;
     const f = Math.max(0, Math.min(0.85, lead.fraction - offset + wiggle));
     return {
-      solver: addr,
-      color: GHOST_COLORS[i],
+      solver: p.address,
+      color: p.color,
       fraction: f,
       status: "racing",
       wobble: 0,

@@ -24,10 +24,13 @@ type RaceProps = {
   /** Spec YAML for spec-shape track mapping. When supplied (replay mode),
    *  the track is derived deterministically from spec metadata. */
   specYaml?: string;
+  /** Persona roster for filling out the race with the non-submitting
+   *  personas as visual competitors. Empty falls back to anonymous ghosts. */
+  personas?: { address: string; color: string }[];
   onState?: (state: { cars: CarState[]; track: TrackGeometry | null }) => void;
 };
 
-export default function Race({ mode = "test", graphKey, bountyId, specYaml, onState }: RaceProps) {
+export default function Race({ mode = "test", graphKey, bountyId, specYaml, personas, onState }: RaceProps) {
   const graph = useMemo(() => {
     if (mode === "replay" && specYaml) {
       return graphFromSpec(specFeaturesFromYaml(specYaml));
@@ -115,7 +118,12 @@ export default function Race({ mode = "test", graphKey, bountyId, specYaml, onSt
         {mode === "test" ? (
           <TestSceneContents graph={graph} />
         ) : (
-          <ReplaySceneContents graph={graph} bountyId={bountyId!} onState={onState} />
+          <ReplaySceneContents
+            graph={graph}
+            bountyId={bountyId!}
+            personas={personas ?? []}
+            onState={onState}
+          />
         )}
       </Suspense>
       <PostFX />
@@ -159,15 +167,17 @@ function TestSceneContents({ graph }: { graph: ReturnType<typeof pickGraphForBou
 function ReplaySceneContents({
   graph,
   bountyId,
+  personas,
   onState,
 }: {
   graph: ReturnType<typeof pickGraphForBounty>;
   bountyId: number;
+  personas: { address: string; color: string }[];
   onState?: (state: { cars: CarState[]; track: TrackGeometry | null }) => void;
 }) {
   const [track, setTrack] = useState<TrackGeometry | null>(null);
   const { cars } = useRaceEngine(bountyId);
-  const carEntries = withGhostSolvers(Object.values(cars), bountyId);
+  const carEntries = withGhostSolvers(Object.values(cars), bountyId, personas);
 
   if (onState) {
     queueMicrotask(() => onState({ cars: carEntries, track }));

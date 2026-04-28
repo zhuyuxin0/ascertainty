@@ -72,6 +72,10 @@ export default function RaceForBountyPage({
         mode="replay"
         bountyId={bountyId}
         specYaml={bounty?.spec_yaml ?? undefined}
+        personas={Object.entries(personas).map(([address, p]) => ({
+          address,
+          color: p.color,
+        }))}
         onState={(s) => {
           setCars(s.cars);
           setTrack(s.track);
