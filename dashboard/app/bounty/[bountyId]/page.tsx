@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { Header } from "@/components/Header";
+import { SubmitProofForm } from "@/components/SubmitProofForm";
 import { API_URL, type Bounty, type Submission } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
@@ -111,13 +112,16 @@ export default async function BountyDetailPage({
           </div>
         </div>
 
+        {/* Wallet-driven proof submission (only when bounty is open) */}
+        <SubmitProofForm bountyId={bounty.id} bountyStatus={bounty.status} />
+
         {/* Submissions */}
         <h2 className="font-mono text-xs uppercase tracking-[0.3em] text-cyan mb-4">
           submissions · {submissions.length}
         </h2>
         {submissions.length === 0 ? (
           <div className="border border-line p-6 font-mono text-xs uppercase tracking-widest text-white/40 text-center">
-            no submissions yet — open the race page or submit via /bounty/submit
+            no submissions yet — connect a wallet above to be the first
           </div>
         ) : (
           <div className="flex flex-col gap-4">

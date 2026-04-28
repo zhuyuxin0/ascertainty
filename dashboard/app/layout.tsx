@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { JetBrains_Mono, Inter } from "next/font/google";
 import "./globals.css";
+import { Web3Providers } from "@/components/Web3Providers";
 
 const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
@@ -28,7 +29,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${jetbrainsMono.variable} ${inter.variable}`}>
       <body className="bg-bg text-white font-sans antialiased">
-        {children}
+        <Web3Providers>{children}</Web3Providers>
       </body>
     </html>
   );

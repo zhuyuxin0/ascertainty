@@ -102,6 +102,39 @@ async def bounties(limit: int = 50):
 class CreateBountyBody(BaseModel):
     spec_yaml: str
     poster_address: str
+    # Wallet-driven flow: when set, the frontend already created the
+    # bounty on-chain via the connected wallet. Backend only verifies the
+    # receipt + parses BountyCreated for the on-chain id; doesn't relay.
+    tx_hash: str | None = None
+
+
+class PrepareCreateBody(BaseModel):
+    spec_yaml: str
+
+
+@app.post("/bounty/prepare-create")
+async def prepare_create(body: PrepareCreateBody) -> dict[str, Any]:
+    """Return on-chain call args (specHash, amount, deadline, challengeWindow)
+    + the BountyFactory + MockUSDC contract addresses so the frontend can
+    issue createBounty from the connected wallet without re-implementing
+    the spec parser."""
+    try:
+        raw = yaml.safe_load(body.spec_yaml)
+        if not isinstance(raw, dict):
+            raise SpecError("spec_yaml must be a YAML mapping")
+        spec = parse_spec(raw)
+    except (SpecError, yaml.YAMLError) as e:
+        raise HTTPException(status_code=400, detail=f"invalid spec: {e}")
+    h = spec_hash(spec)
+    addrs = og_chain.addresses()["contracts"] if og_chain.is_configured() else {}
+    return {
+        "spec_hash": "0x" + h,
+        "amount_usdc": str(spec.bounty_usdc),
+        "deadline_unix": spec.deadline_unix,
+        "challenge_window_seconds": spec.challenge_window_seconds,
+        "bounty_factory": addrs.get("BountyFactory"),
+        "mock_usdc": addrs.get("MockUSDC"),
+    }
 
 
 @app.post("/bounty/create")
@@ -128,7 +161,37 @@ async def create_bounty(body: CreateBountyBody) -> dict[str, Any]:
         raise HTTPException(status_code=409, detail="bounty with this spec_hash already exists")
 
     onchain_field = None
-    if publisher.is_configured():
+    if body.tx_hash:
+        # Wallet-driven path: client already broadcast the createBounty tx.
+        # Fetch the receipt + parse the BountyCreated event for the id.
+        try:
+            w3 = og_chain.get_w3()
+            factory = og_chain.get_factory()
+            tx_hash_bytes = bytes.fromhex(body.tx_hash.removeprefix("0x"))
+            receipt = await w3.eth.wait_for_transaction_receipt(tx_hash_bytes, timeout=60)
+            events = factory.events.BountyCreated().process_receipt(receipt)
+            if not events:
+                raise HTTPException(
+                    status_code=400,
+                    detail="tx did not emit BountyCreated (wrong contract or reverted?)",
+                )
+            onchain_id = int(events[0]["args"]["bountyId"])
+            await db.set_bounty_onchain(
+                bounty_id,
+                onchain_bounty_id=onchain_id,
+                tx_hash=body.tx_hash,
+            )
+            onchain_field = {
+                "onchain_bounty_id": onchain_id,
+                "tx_hash": body.tx_hash,
+                "block_number": receipt["blockNumber"],
+                "via": "wallet",
+            }
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"tx receipt verification failed: {e}")
+    elif publisher.is_configured():
         onchain = await publisher.create_bounty_onchain(
             spec_hash=bytes.fromhex(h),
             amount=spec.bounty_usdc,
@@ -145,6 +208,7 @@ async def create_bounty(body: CreateBountyBody) -> dict[str, Any]:
                 "onchain_bounty_id": onchain.onchain_bounty_id,
                 "tx_hash": onchain.tx_hash,
                 "block_number": onchain.block_number,
+                "via": "operator",
             }
 
     return {
@@ -296,6 +360,54 @@ async def submit_proof(body: SubmitProofBody) -> dict[str, Any]:
         "kernel_output": result.kernel_output,
         "onchain": onchain_field,
         "keeperhub": keeperhub_field,
+    }
+
+
+class PrepareSubmitBody(BaseModel):
+    bounty_id: int
+    solver_address: str
+    proof: str
+
+
+@app.post("/bounty/submit-prepare")
+async def prepare_submit(body: PrepareSubmitBody) -> dict[str, Any]:
+    """Run the verifier + build the attestation, return everything the
+    frontend needs to issue an EIP-191 personal_sign for the gasless
+    submitProofFor flow. Does NOT touch the chain or persist anything."""
+    bounty = await db.get_bounty(body.bounty_id)
+    if bounty is None:
+        raise HTTPException(status_code=404, detail="bounty not found")
+    if bounty.get("onchain_bounty_id") is None:
+        raise HTTPException(status_code=400, detail="bounty not yet on-chain")
+    if not publisher.is_configured():
+        raise HTTPException(status_code=503, detail="publisher not configured")
+
+    private_key = os.getenv("OG_PRIVATE_KEY")
+    if not private_key:
+        raise HTTPException(status_code=500, detail="OG_PRIVATE_KEY not configured")
+
+    raw = yaml.safe_load(bounty["spec_yaml"])
+    spec = parse_spec(raw)
+    result = await verify(spec, body.proof)
+    if not result.accepted:
+        return {
+            "accepted": False,
+            "reason": "verifier rejected the proof",
+            "kernel_output": result.kernel_output[:2000],
+        }
+    unsigned = build_attestation(spec, result)
+    signed = sign_attestation(unsigned, private_key)
+    attestation_hash = "0x" + signed["attestation_hash"]
+    message_hash = publisher.build_submit_proof_message(
+        onchain_bounty_id=bounty["onchain_bounty_id"],
+        attestation_hash=bytes.fromhex(signed["attestation_hash"]),
+    )
+    return {
+        "accepted": True,
+        "attestation_hash": attestation_hash,
+        "message_hash": "0x" + message_hash.hex(),
+        "onchain_bounty_id": bounty["onchain_bounty_id"],
+        "scheme": "EIP-191 personal_sign over message_hash bytes",
     }
 
 

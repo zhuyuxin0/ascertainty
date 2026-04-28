@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import { ConnectButton } from "@/components/ConnectButton";
+
 type Active = "bounties" | "leaderboard" | "agent" | null;
 
 export function Header({ active = null }: { active?: Active }) {
@@ -34,6 +36,9 @@ export function Header({ active = null }: { active?: Active }) {
           >
             Agent
           </Link>
+          <div className="border-l border-line pl-6">
+            <ConnectButton />
+          </div>
         </nav>
       </div>
     </header>
