@@ -119,6 +119,27 @@ def get_persona_by_address(address: str) -> Optional[dict[str, Any]]:
     return None
 
 
+def get_persona_by_slug(slug: str) -> Optional[dict[str, Any]]:
+    for p in _state["personas"]:
+        if p.get("slug") == slug:
+            return p
+    return None
+
+
+def set_wearing(slug: str, badges: list[str]) -> bool:
+    """Update the persona's worn-badge list and re-persist personas.json.
+    Returns True if the persona exists. Caller is responsible for
+    validating that each badge is a real catalog slug; the engine
+    accepts any list (so the operator can experimentally pin even
+    not-yet-earned badges if they want a 'future-self' card)."""
+    p = get_persona_by_slug(slug)
+    if p is None:
+        return False
+    p["wearing_badges"] = list(badges)
+    _persist(_state["personas"])
+    return True
+
+
 async def init() -> None:
     """Idempotent — bootstraps any persona that is not yet on-chain."""
     if not og_chain.is_configured():
@@ -170,6 +191,7 @@ async def _do_init() -> None:
                 "descriptor": model_descriptor,
                 "version": version_tag,
                 "minted_at": int(minted_at),
+                "wearing_badges": rec.get("wearing_badges", []),
             })
             out.append(rec)
             log.info("personas: %s already minted as token #%d", slug, existing_token)
@@ -214,6 +236,7 @@ async def _do_init() -> None:
             "descriptor": spec["descriptor"],
             "version": spec["version"],
             "minted_at": int(time.time()),
+            "wearing_badges": [],
         }
         out.append(rec)
 

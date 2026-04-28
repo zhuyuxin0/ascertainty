@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from backend import (
+    badges,
     cctp_watcher,
     claim_task,
     db,
@@ -353,6 +354,7 @@ async def submit_proof(body: SubmitProofBody) -> dict[str, Any]:
         tee_explanation=explanation,
         kernel_output_hash=signed.get("kernel_output_hash"),
         verifier_mode=result.mode,
+        kernel_duration_seconds=result.duration_seconds,
     )
     await db.update_bounty_status(body.bounty_id, "submitted" if result.accepted else "open")
 
@@ -567,42 +569,85 @@ async def agent_status() -> dict[str, Any]:
     }
 
 
+async def _persona_payload(p: dict[str, Any], operator_address: str) -> dict[str, Any]:
+    """Shared persona-card payload: omits private_key, joins live on-chain
+    reputation + DB-derived stats + earned + worn badges. Used by both the
+    GET /agent/personas roster and the POST /agent/personas/{slug}/wear
+    response so the frontend can update the card without a second roundtrip."""
+    addr = p.get("address")
+    reputation = 0
+    solved = 0
+    if og_chain.is_configured() and addr:
+        try:
+            registry = og_chain.get_registry()
+            reputation = int(await registry.functions.reputation(addr).call())
+            solved = int(await registry.functions.solvedCount(addr).call())
+        except Exception:
+            pass
+
+    # Live stats from DB
+    submission_stats = await db.solver_submission_stats(addr) if addr else {}
+    earned_badges = await badges.compute_badges(
+        address=addr or "0x0", operator_address=operator_address,
+    ) if addr else []
+
+    # `wearing_badges` empty list means "wear all earned" (default for
+    # freshly-minted personas). Operator can override via POST /wear.
+    worn_slugs = p.get("wearing_badges") or [b["slug"] for b in earned_badges]
+    return {
+        "slug": p["slug"],
+        "name": p["name"],
+        "emoji": p["emoji"],
+        "color": p["color"],
+        "tagline": p["tagline"],
+        "profile": p["profile"],
+        "axiom_breadth": p["axiom_breadth"],
+        "address": addr,
+        "token_id": p.get("token_id"),
+        "storage_root_hash": p.get("storage_root_hash"),
+        "descriptor": p.get("descriptor"),
+        "version": p.get("version"),
+        "minted_at": p.get("minted_at"),
+        "reputation": reputation,
+        "solved_count": solved,
+        "stats": submission_stats,
+        "earned_badges": earned_badges,
+        "worn_badges": worn_slugs,
+    }
+
+
 @app.get("/agent/personas")
 async def agent_personas() -> dict[str, Any]:
-    """Persona iNFT roster + reputation lookup for each persona's address.
-    The dashboard renders these as Pokemon-style cards on /agent."""
+    """Persona iNFT roster + live stats + earned/worn GitHub-style badges."""
     state = personas.get_state()
+    operator_address = (
+        og_chain.get_account().address if og_chain.is_configured() else "0x0"
+    )
     out = []
-    if og_chain.is_configured():
-        registry = og_chain.get_registry()
-        for p in state["personas"]:
-            addr = p.get("address")
-            reputation = 0
-            solved = 0
-            if addr:
-                try:
-                    reputation = int(await registry.functions.reputation(addr).call())
-                    solved = int(await registry.functions.solvedCount(addr).call())
-                except Exception:
-                    pass
-            out.append({
-                # Note: deliberately omit private_key from the API response
-                "slug": p["slug"],
-                "name": p["name"],
-                "emoji": p["emoji"],
-                "color": p["color"],
-                "tagline": p["tagline"],
-                "profile": p["profile"],
-                "axiom_breadth": p["axiom_breadth"],
-                "address": p.get("address"),
-                "token_id": p.get("token_id"),
-                "storage_root_hash": p.get("storage_root_hash"),
-                "descriptor": p.get("descriptor"),
-                "version": p.get("version"),
-                "minted_at": p.get("minted_at"),
-                "reputation": reputation,
-                "solved_count": solved,
-            })
-    return {"configured": state["configured"], "personas": out}
+    for p in state["personas"]:
+        out.append(await _persona_payload(p, operator_address))
+    return {
+        "configured": state["configured"],
+        "personas": out,
+        "badge_catalog": badges.all_rules(),
+    }
+
+
+class WearBadgesBody(BaseModel):
+    badges: list[str]
+
+
+@app.post("/agent/personas/{slug}/wear")
+async def set_persona_wearing(slug: str, body: WearBadgesBody) -> dict[str, Any]:
+    """Curate which badges the persona displays on its card. Pass an empty
+    list to reset to 'wear all earned'. No auth gate in the demo build —
+    in production this would require a signature from the persona's privkey."""
+    if not personas.set_wearing(slug, body.badges):
+        raise HTTPException(status_code=404, detail="persona not found")
+    p = personas.get_persona_by_slug(slug)
+    operator_address = (
+        og_chain.get_account().address if og_chain.is_configured() else "0x0"
+    )
+    return await _persona_payload(p, operator_address)
 
 

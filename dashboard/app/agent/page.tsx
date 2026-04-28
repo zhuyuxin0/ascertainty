@@ -1,6 +1,6 @@
 import { Header } from "@/components/Header";
 import { PersonaCard } from "@/components/PersonaCard";
-import { API_URL } from "@/lib/api";
+import { api, API_URL } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -66,7 +66,11 @@ type PersonasResp = {
     minted_at: number | null;
     reputation: number;
     solved_count: number;
+    stats?: any;
+    earned_badges?: any[];
+    worn_badges?: string[];
   }>;
+  badge_catalog?: any[];
 };
 
 async function loadPersonas(): Promise<PersonasResp | null> {
@@ -104,7 +108,12 @@ export default async function AgentStatusPage() {
             </p>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {personas.personas.map((p) => (
-                <PersonaCard key={p.slug} persona={p} />
+                <PersonaCard
+                  key={p.slug}
+                  persona={p}
+                  catalog={personas.badge_catalog ?? []}
+                  apiBase={api.base}
+                />
               ))}
             </div>
           </div>

@@ -165,6 +165,8 @@ async def init_db() -> None:
                     "kernel_output_hash", "verifier_mode"):
             if col not in sub_cols:
                 await db.execute(f"ALTER TABLE submissions ADD COLUMN {col} TEXT")
+        if "kernel_duration_seconds" not in sub_cols:
+            await db.execute("ALTER TABLE submissions ADD COLUMN kernel_duration_seconds REAL")
         await db.commit()
 
 
@@ -364,6 +366,7 @@ async def insert_submission(
     tee_explanation: Optional[str] = None,
     kernel_output_hash: Optional[str] = None,
     verifier_mode: Optional[str] = None,
+    kernel_duration_seconds: Optional[float] = None,
 ) -> Optional[int]:
     async with _conn() as db:
         try:
@@ -372,17 +375,79 @@ async def insert_submission(
                    (bounty_id, solver_address, attestation_hash, proof_hash,
                     accepted, submitted_at, onchain_tx_hash,
                     storage_root_hash, storage_tx_hash, tee_explanation,
-                    kernel_output_hash, verifier_mode)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    kernel_output_hash, verifier_mode, kernel_duration_seconds)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (bounty_id, solver_address, attestation_hash, proof_hash,
                  1 if accepted else 0, submitted_at, onchain_tx_hash,
                  storage_root_hash, storage_tx_hash, tee_explanation,
-                 kernel_output_hash, verifier_mode),
+                 kernel_output_hash, verifier_mode, kernel_duration_seconds),
             )
             await db.commit()
             return cur.lastrowid
         except aiosqlite.IntegrityError:
             return None
+
+
+async def solver_submission_stats(address: str) -> dict[str, Any]:
+    """Aggregate per-solver stats from the submissions table. Used to
+    populate the live persona-card stat block (acceptance %, win count,
+    avg kernel time, domain affinities)."""
+    async with _conn() as conn:
+        conn.row_factory = aiosqlite.Row
+        async with conn.execute(
+            """SELECT COUNT(*) AS attempts,
+                      SUM(accepted) AS accepted,
+                      AVG(CASE WHEN accepted = 1 AND kernel_duration_seconds IS NOT NULL
+                               THEN kernel_duration_seconds END) AS avg_kernel_time,
+                      MIN(CASE WHEN accepted = 1 AND kernel_duration_seconds IS NOT NULL
+                               THEN kernel_duration_seconds END) AS fastest_kernel
+               FROM submissions
+               WHERE LOWER(solver_address) = LOWER(?)""",
+            (address,),
+        ) as cur:
+            row = await cur.fetchone()
+            agg = dict(row) if row else {}
+        # Settled count + domain tags from accepted submissions
+        async with conn.execute(
+            """SELECT COUNT(DISTINCT s.bounty_id) AS settled_count
+               FROM submissions s JOIN bounties b ON b.id = s.bounty_id
+               WHERE LOWER(s.solver_address) = LOWER(?) AND b.status = 'settled'""",
+            (address,),
+        ) as cur:
+            row = await cur.fetchone()
+            agg["settled_count"] = (row["settled_count"] if row else 0) or 0
+        async with conn.execute(
+            """SELECT b.spec_yaml FROM submissions s
+               JOIN bounties b ON b.id = s.bounty_id
+               WHERE LOWER(s.solver_address) = LOWER(?) AND s.accepted = 1""",
+            (address,),
+        ) as cur:
+            yamls = [(r["spec_yaml"] or "") for r in await cur.fetchall()]
+    domain_tags: dict[str, int] = {}
+    for y in yamls:
+        try:
+            import yaml as _yaml
+            tags = (_yaml.safe_load(y) or {}).get("tags") or []
+            for t in tags:
+                if isinstance(t, str):
+                    domain_tags[t] = domain_tags.get(t, 0) + 1
+        except Exception:
+            pass
+    attempts = (agg.get("attempts") or 0) or 0
+    accepted = (agg.get("accepted") or 0) or 0
+    return {
+        "attempts": attempts,
+        "accepted": accepted,
+        "rejected": attempts - accepted,
+        "acceptance_rate": (accepted / attempts) if attempts else 0.0,
+        "avg_kernel_seconds": agg.get("avg_kernel_time"),
+        "fastest_kernel_seconds": agg.get("fastest_kernel"),
+        "settled_count": agg.get("settled_count", 0),
+        "domain_tags": [
+            {"tag": t, "count": c}
+            for t, c in sorted(domain_tags.items(), key=lambda kv: -kv[1])
+        ],
+    }
 
 
 async def submissions_for_bounty(bounty_id: int) -> list[dict]:
