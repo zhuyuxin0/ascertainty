@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { Header } from "@/components/Header";
 import { SubmitProofForm } from "@/components/SubmitProofForm";
+import { TheoremSigil } from "@/components/TheoremSigil";
 import { API_URL, type Bounty, type Submission } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
@@ -90,11 +91,34 @@ export default async function BountyDetailPage({
             </div>
           </div>
 
-          <div>
-            <div className="font-mono text-4xl text-cyan">{usdc} MockUSDC</div>
-            <div className="font-mono text-xs text-white/40 mt-1">
-              deadline {deadline.toISOString().slice(0, 19).replace("T", " ")}Z · challenge window{" "}
-              {bounty.challenge_window_seconds}s
+          <div className="flex items-center gap-6">
+            <TheoremSigil
+              hash={bounty.spec_hash}
+              color={
+                bounty.status === "settled"
+                  ? "#00d4aa"
+                  : bounty.status === "submitted" || bounty.status === "challenged"
+                    ? "#ff6b35"
+                    : "#00d4aa"
+              }
+              size={120}
+              label={`Theorem sigil for bounty ${bounty.id}`}
+            />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-baseline gap-2">
+                <span className="font-sans text-6xl text-cyan tabular-nums leading-none">
+                  {usdc}
+                </span>
+                <span className="font-mono text-xs uppercase tracking-widest text-white/40">
+                  MockUSDC
+                </span>
+              </div>
+              <div className="font-mono text-xs text-white/40 mt-2">
+                deadline {deadline.toISOString().slice(0, 19).replace("T", " ")}Z
+              </div>
+              <div className="font-mono text-xs text-white/40">
+                challenge window {bounty.challenge_window_seconds}s
+              </div>
             </div>
           </div>
 

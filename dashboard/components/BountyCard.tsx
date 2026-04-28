@@ -1,4 +1,6 @@
 import Link from "next/link";
+
+import { TheoremSigil } from "@/components/TheoremSigil";
 import type { Bounty } from "@/lib/api";
 
 const STATUS_BG: Record<string, string> = {
@@ -9,17 +11,24 @@ const STATUS_BG: Record<string, string> = {
   cancelled: "bg-white/5 text-white/40 border-white/20",
 };
 
+const STATUS_TINT: Record<string, string> = {
+  open: "#00d4aa",
+  submitted: "#ff6b35",
+  challenged: "#ff6b35",
+  settled: "#00d4aa",
+  cancelled: "#666",
+};
+
 export function BountyCard({ bounty }: { bounty: Bounty }) {
-  const usdc = (parseInt(bounty.amount_usdc, 10) / 1_000_000).toLocaleString(
-    undefined,
-    { maximumFractionDigits: 2 },
-  );
+  const usdcRaw = parseInt(bounty.amount_usdc, 10) / 1_000_000;
+  const usdc = usdcRaw.toLocaleString(undefined, { maximumFractionDigits: 2 });
   const deadline = new Date(bounty.deadline_unix * 1000);
   const daysLeft = Math.max(
     0,
     Math.floor((deadline.getTime() - Date.now()) / (1000 * 60 * 60 * 24)),
   );
   const statusClass = STATUS_BG[bounty.status] ?? STATUS_BG.open;
+  const sigilColor = STATUS_TINT[bounty.status] ?? "#00d4aa";
 
   return (
     <Link
@@ -49,25 +58,47 @@ export function BountyCard({ bounty }: { bounty: Bounty }) {
           </span>
         </div>
       </div>
-      {(bounty.novelty != null || bounty.difficulty != null) && (
-        <div className="flex gap-3 font-mono text-[10px] text-white/50">
-          <span>
-            novelty <span className="text-cyan">{bounty.novelty ?? "—"}</span>/10
-          </span>
-          <span>
-            difficulty <span className="text-cyan">{bounty.difficulty ?? "—"}</span>/10
-          </span>
-        </div>
-      )}
 
-      <div>
-        <div className="font-mono text-2xl text-cyan">{usdc} MockUSDC</div>
-        <div className="font-mono text-[10px] uppercase tracking-widest text-white/40 mt-1">
-          {daysLeft > 0 ? `${daysLeft}d to deadline` : "deadline passed"}
+      {/* Hero: sigil + big amount */}
+      <div className="flex items-center gap-4">
+        <TheoremSigil
+          hash={bounty.spec_hash}
+          color={sigilColor}
+          size={72}
+          label={`Theorem sigil for bounty ${bounty.id}`}
+        />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-baseline gap-1.5">
+            <span className="font-mono text-[10px] uppercase tracking-widest text-white/40">
+              ⌥
+            </span>
+            <span className="font-sans text-4xl text-cyan tabular-nums leading-none">
+              {usdc}
+            </span>
+          </div>
+          <div className="font-mono text-[10px] uppercase tracking-widest text-white/40 mt-1">
+            MockUSDC · {daysLeft > 0 ? `${daysLeft}d left` : "deadline passed"}
+          </div>
         </div>
       </div>
 
-      <TrackPreview seed={bounty.id} />
+      {/* N/D stats — compact, numerals lead */}
+      {(bounty.novelty != null || bounty.difficulty != null) && (
+        <div className="flex gap-4 font-mono text-[10px] uppercase tracking-widest text-white/40 border-t border-line/40 pt-3">
+          <span>
+            <span className="text-cyan text-base font-sans tabular-nums mr-1.5">
+              {bounty.novelty ?? "—"}
+            </span>
+            novelty
+          </span>
+          <span>
+            <span className="text-cyan text-base font-sans tabular-nums mr-1.5">
+              {bounty.difficulty ?? "—"}
+            </span>
+            difficulty
+          </span>
+        </div>
+      )}
 
       {bounty.tee_explanation && (
         <div className="border-l-2 border-cyan/30 pl-3 py-1">
@@ -88,29 +119,5 @@ export function BountyCard({ bounty }: { bounty: Bounty }) {
         view evidence →
       </div>
     </Link>
-  );
-}
-
-/** Tiny ASCII-art preview of a procedurally-shaped track, deterministic by id. */
-function TrackPreview({ seed }: { seed: number }) {
-  const rows = 5;
-  const cols = 22;
-  const lines: string[] = [];
-  for (let r = 0; r < rows; r++) {
-    let line = "";
-    for (let c = 0; c < cols; c++) {
-      const noise = Math.sin((c + 1) * 0.6 + seed) + Math.cos((r + 1) * 0.8 + seed * 0.3);
-      const t = (Math.sin(c * 0.4 + seed) + 1) * 0.5;
-      const onPath = Math.abs(r - (rows / 2 + Math.sin(c * 0.5 + seed) * 1.5)) < 0.6;
-      if (onPath) line += "━";
-      else if (noise > 1.4) line += "·";
-      else line += " ";
-    }
-    lines.push(line);
-  }
-  return (
-    <pre className="font-mono text-[8px] leading-[1.05] text-cyan/50 whitespace-pre">
-      {lines.join("\n")}
-    </pre>
   );
 }

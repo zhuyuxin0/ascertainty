@@ -68,11 +68,13 @@ function Stat({
 }) {
   return (
     <div className="border-l-2 border-cyan/40 pl-4 flex flex-col gap-1">
-      <span className="font-mono text-3xl">{value}</span>
-      <span className="font-mono text-xs uppercase tracking-widest text-white/60">
+      <span className="font-sans text-5xl text-cyan tabular-nums leading-none">
+        {value}
+      </span>
+      <span className="font-mono text-[11px] uppercase tracking-widest text-white/60 mt-1">
         {label}
       </span>
-      <span className="font-mono text-[10px] text-white/40">{hint}</span>
+      <span className="font-mono text-[9px] text-white/40">{hint}</span>
     </div>
   );
 }

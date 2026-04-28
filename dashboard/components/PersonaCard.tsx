@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 
+import { TheoremSigil } from "@/components/TheoremSigil";
+
 type Badge = {
   slug: string;
   name: string;
@@ -77,15 +79,18 @@ export function PersonaCard({
       className="border bg-bg/60 backdrop-blur p-5 flex flex-col gap-3 relative overflow-hidden"
       style={{ borderColor: persona.color }}
     >
-      <div
-        className="absolute -top-3 -right-3 text-7xl opacity-20"
-        aria-hidden
-      >
-        {persona.emoji}
+      {/* Persona sigil — derived from on-chain address, distinct per persona */}
+      <div className="absolute top-3 right-3 opacity-90" aria-hidden>
+        <TheoremSigil
+          hash={persona.address ?? "0x0"}
+          color={persona.color}
+          size={56}
+          label={`${persona.name} persona sigil`}
+        />
       </div>
 
       {/* Header */}
-      <div className="relative">
+      <div className="relative pr-16">
         <a
           href={persona.address ? `${EXPLORER}/address/${persona.address}` : "#"}
           target={persona.address ? "_blank" : undefined}
@@ -96,10 +101,11 @@ export function PersonaCard({
             persona iNFT{persona.token_id !== null ? ` · #${persona.token_id}` : ""}
           </div>
           <div
-            className="font-sans text-2xl font-light mt-0.5 group-hover:underline"
+            className="font-sans text-2xl font-light mt-0.5 group-hover:underline flex items-center gap-2"
             style={{ color: persona.color }}
           >
-            {persona.name}
+            <span className="text-xl">{persona.emoji}</span>
+            <span>{persona.name}</span>
           </div>
           <div className="font-mono text-[10px] text-white/60 mt-0.5">
             {persona.tagline}

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
+import { TheoremSigil } from "@/components/TheoremSigil";
 import { api, type Bounty, type RaceEvent, type Submission } from "@/lib/api";
 
 type Persona = {
@@ -141,30 +142,47 @@ export function MissionControl({
   return (
     <section className="max-w-6xl mx-auto px-6 pt-8 pb-24">
       {/* Mission Control header */}
-      <div className="flex items-end justify-between mb-2">
-        <div>
-          <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-cyan">
-            mission control · live telemetry
-          </p>
-          <h1 className="font-mono text-3xl mt-1">
-            bounty #{bounty.id}
-            {bounty.onchain_bounty_id !== null && (
-              <span className="text-cyan/50 text-xl ml-3">
-                on-chain {bounty.onchain_bounty_id}
-              </span>
-            )}
-          </h1>
+      <div className="flex items-center justify-between gap-4 mb-2">
+        <div className="flex items-center gap-4">
+          <TheoremSigil
+            hash={bounty.spec_hash}
+            color={
+              bounty.status === "settled" || bounty.status === "open"
+                ? "#00d4aa"
+                : "#ff6b35"
+            }
+            size={88}
+            label={`Theorem sigil for bounty ${bounty.id}`}
+          />
+          <div>
+            <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-cyan">
+              mission control · live telemetry
+            </p>
+            <h1 className="font-mono text-3xl mt-1">
+              bounty #{bounty.id}
+              {bounty.onchain_bounty_id !== null && (
+                <span className="text-cyan/50 text-xl ml-3">
+                  on-chain {bounty.onchain_bounty_id}
+                </span>
+              )}
+            </h1>
+          </div>
         </div>
         <div className="flex flex-col items-end">
+          <div className="flex items-baseline gap-1.5">
+            <span className="font-sans text-4xl text-cyan tabular-nums leading-none">
+              {usdc}
+            </span>
+            <span className="font-mono text-[10px] uppercase tracking-widest text-white/40">
+              MockUSDC
+            </span>
+          </div>
           <span
-            className={`font-mono text-xs uppercase tracking-widest border px-3 py-1 ${
+            className={`font-mono text-[10px] uppercase tracking-widest border px-2 py-0.5 mt-2 ${
               STATUS_COLORS[bounty.status] ?? STATUS_COLORS.open
             }`}
           >
             {bounty.status}
-          </span>
-          <span className="font-mono text-[10px] uppercase tracking-widest text-white/40 mt-2">
-            {usdc} MockUSDC at stake
           </span>
         </div>
       </div>
