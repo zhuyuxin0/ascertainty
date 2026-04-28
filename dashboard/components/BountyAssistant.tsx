@@ -4,6 +4,18 @@ import { useState } from "react";
 
 import { API_URL } from "@/lib/api";
 
+type RefineOutcome = "valid" | "refine" | "operationalize" | "reject";
+
+type RefineResp = {
+  outcome: RefineOutcome;
+  spec_yaml?: string;
+  warning?: string;
+  rejection_reason?: string;
+  suggested_redirect?: string;
+  parse_error?: string | null;
+  fallback?: boolean;
+};
+
 type Rating = {
   novelty: number;
   difficulty: number;
@@ -20,10 +32,12 @@ type Duplicate = {
   theorem: string;
 };
 
-type DuplicateResp = {
+type DupResp = {
   duplicates: Duplicate[];
   warning_level: "block" | "warn" | "ok";
 };
+
+type StepStatus = "pending" | "running" | "passed" | "failed" | "blocked";
 
 const REC_COLORS: Record<string, string> = {
   post: "border-cyan/60 bg-cyan/10 text-cyan",
@@ -34,117 +48,198 @@ const REC_COLORS: Record<string, string> = {
 export function BountyAssistant({
   specYaml,
   setSpecYaml,
+  onUnlocked,
 }: {
   specYaml: string;
   setSpecYaml: (s: string) => void;
+  onUnlocked: (unlocked: boolean) => void;
 }) {
-  const [description, setDescription] = useState(
-    "Prove that for every prime p > 2, the multiplicative group (ℤ/pℤ)* is cyclic.",
+  const [input, setInput] = useState(
+    "Prove that for every prime p > 2, the multiplicative group of integers modulo p is cyclic.",
   );
   const [tags, setTags] = useState("number-theory,group-theory");
-  const [phase, setPhase] = useState<
-    "idle" | "formalizing" | "rating" | "checking"
-  >("idle");
-  const [error, setError] = useState<string | null>(null);
-  const [rating, setRating] = useState<Rating | null>(null);
-  const [duplicates, setDuplicates] = useState<DuplicateResp | null>(null);
-  const [parseError, setParseError] = useState<string | null>(null);
-  const [formalizeFallback, setFormalizeFallback] = useState(false);
 
-  async function onFormalize() {
-    setError(null);
-    setParseError(null);
+  const [s1, setS1] = useState<StepStatus>("pending");
+  const [s2, setS2] = useState<StepStatus>("pending");
+  const [s3, setS3] = useState<StepStatus>("pending");
+
+  const [refine, setRefine] = useState<RefineResp | null>(null);
+  const [rating, setRating] = useState<Rating | null>(null);
+  const [dup, setDup] = useState<DupResp | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  function reset() {
+    setS1("pending");
+    setS2("pending");
+    setS3("pending");
+    setRefine(null);
     setRating(null);
-    setDuplicates(null);
-    setPhase("formalizing");
+    setDup(null);
+    setError(null);
+    onUnlocked(false);
+  }
+
+  async function runWizard() {
+    reset();
+    setError(null);
+
+    // Step 1 — refine
+    setS1("running");
+    let refineResult: RefineResp;
     try {
-      const res = await fetch(`${API_URL}/bounty/assist/formalize`, {
+      const res = await fetch(`${API_URL}/bounty/assist/refine`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          description,
+          description: input,
           tags: tags
             .split(",")
             .map((t) => t.trim())
             .filter(Boolean),
         }),
       });
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}: ${await res.text()}`);
-      }
-      const data = await res.json();
-      if (data.spec_yaml) setSpecYaml(data.spec_yaml);
-      if (data.parse_error) setParseError(data.parse_error);
-      setFormalizeFallback(Boolean(data.fallback));
+      if (!res.ok) throw new Error(`refine HTTP ${res.status}: ${await res.text()}`);
+      refineResult = (await res.json()) as RefineResp;
+      setRefine(refineResult);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setPhase("idle");
+      setS1("failed");
+      return;
     }
-  }
 
-  async function onRate() {
-    setError(null);
-    setPhase("rating");
+    if (refineResult.outcome === "reject") {
+      setS1("failed");
+      setS2("blocked");
+      setS3("blocked");
+      return;
+    }
+    setS1("passed");
+    if (refineResult.spec_yaml) setSpecYaml(refineResult.spec_yaml);
+
+    const yamlForRest = refineResult.spec_yaml ?? specYaml;
+    if (refineResult.parse_error) {
+      // Spec didn't parse — can't rate or dedup. Show step 1 as passed but
+      // gate 2 and 3 until the user fixes the YAML and re-runs.
+      setS2("blocked");
+      setS3("blocked");
+      return;
+    }
+
+    // Step 2 — rate
+    setS2("running");
+    let ratingResult: Rating;
     try {
       const res = await fetch(`${API_URL}/bounty/assist/rate`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ spec_yaml: specYaml }),
+        body: JSON.stringify({ spec_yaml: yamlForRest }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
-      const data = (await res.json()) as Rating;
-      setRating(data);
+      if (!res.ok) throw new Error(`rate HTTP ${res.status}: ${await res.text()}`);
+      ratingResult = (await res.json()) as Rating;
+      setRating(ratingResult);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setPhase("idle");
+      setS2("failed");
+      setS3("blocked");
+      return;
     }
-  }
+    if (ratingResult.recommendation === "reject") {
+      setS2("failed");
+      setS3("blocked");
+      return;
+    }
+    setS2("passed");
 
-  async function onCheckDup() {
-    setError(null);
-    setPhase("checking");
+    // Step 3 — dedup
+    setS3("running");
     try {
       const res = await fetch(`${API_URL}/bounty/assist/check-duplicate`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ spec_yaml: specYaml }),
+        body: JSON.stringify({ spec_yaml: yamlForRest }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
-      const data = (await res.json()) as DuplicateResp;
-      setDuplicates(data);
+      if (!res.ok) throw new Error(`dedup HTTP ${res.status}: ${await res.text()}`);
+      const dupResult = (await res.json()) as DupResp;
+      setDup(dupResult);
+      if (dupResult.warning_level === "block") {
+        setS3("failed");
+        return;
+      }
+      setS3("passed");
+      onUnlocked(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setPhase("idle");
+      setS3("failed");
     }
   }
 
+  const stepperColor = (s: StepStatus) =>
+    s === "passed"
+      ? "border-cyan text-cyan"
+      : s === "running"
+        ? "border-amber text-amber animate-pulse"
+        : s === "failed"
+          ? "border-amber bg-amber/20 text-amber"
+          : s === "blocked"
+            ? "border-line/30 text-white/30"
+            : "border-line text-white/50";
+
+  const wizardRunning = s1 === "running" || s2 === "running" || s3 === "running";
+
   return (
-    <div className="border border-cyan/30 bg-cyan/5 p-4 flex flex-col gap-3">
+    <div className="border border-cyan/30 bg-cyan/5 p-4 flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <div>
           <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-cyan">
             ai assist · powered by 0g compute (TEE)
           </p>
           <p className="font-mono text-[10px] text-white/50 mt-0.5">
-            describe your claim in english → autoformalize to Lean 4 spec → rate novelty + difficulty
+            describe your claim → agent refines, rates, dedups, then unlocks the spec for posting
           </p>
         </div>
       </div>
 
+      {/* Stepper */}
+      <div className="grid grid-cols-3 gap-2">
+        {(
+          [
+            ["1 · refine", s1, "Lean-formalize or honestly reject"],
+            ["2 · rate", s2, "novelty + difficulty + recommendation"],
+            ["3 · dedup", s3, "scan for existing on-chain dupes"],
+          ] as const
+        ).map(([label, st, sub]) => (
+          <div
+            key={label}
+            className={`border px-3 py-2 font-mono text-[10px] uppercase tracking-widest flex flex-col gap-0.5 ${stepperColor(st)}`}
+          >
+            <span>{label}</span>
+            <span className="text-white/40 normal-case text-[9px]">{sub}</span>
+            <span className="text-[9px] mt-1">
+              {st === "passed" && "✓ passed"}
+              {st === "running" && "running…"}
+              {st === "failed" && "✗ blocked"}
+              {st === "blocked" && "⊘ skipped"}
+              {st === "pending" && "—"}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {/* Input */}
       <div className="grid grid-cols-1 md:grid-cols-[1fr_220px] gap-3">
         <div>
           <label className="block font-mono text-[10px] uppercase tracking-widest text-white/60 mb-1">
-            claim (plain english)
+            claim (plain english OR pasted YAML)
           </label>
           <textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            rows={3}
+            value={input}
+            onChange={(e) => {
+              setInput(e.target.value);
+              if (s1 !== "pending") reset();
+            }}
+            rows={4}
             className="w-full bg-bg border border-line text-white font-sans text-sm px-3 py-2 focus:border-cyan focus:outline-none"
-            placeholder="e.g. Prove that every continuous function on a closed interval attains its maximum."
+            placeholder='e.g. "Prove that every continuous function on a closed interval attains its maximum."'
           />
         </div>
         <div>
@@ -160,31 +255,25 @@ export function BountyAssistant({
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2 items-center">
         <button
           type="button"
-          onClick={onFormalize}
-          disabled={phase !== "idle" || !description.trim()}
+          onClick={runWizard}
+          disabled={wizardRunning || !input.trim()}
           className="border border-cyan text-cyan px-4 py-2 font-mono text-[11px] uppercase tracking-widest hover:bg-cyan hover:text-bg transition-colors disabled:opacity-50"
         >
-          {phase === "formalizing" ? "formalizing…" : "✨ autoformalize"}
+          {wizardRunning ? "running wizard…" : "✨ refine & validate"}
         </button>
-        <button
-          type="button"
-          onClick={onRate}
-          disabled={phase !== "idle" || !specYaml}
-          className="border border-line text-white/70 px-4 py-2 font-mono text-[11px] uppercase tracking-widest hover:border-cyan hover:text-cyan disabled:opacity-50"
-        >
-          {phase === "rating" ? "rating…" : "rate spec"}
-        </button>
-        <button
-          type="button"
-          onClick={onCheckDup}
-          disabled={phase !== "idle" || !specYaml}
-          className="border border-line text-white/70 px-4 py-2 font-mono text-[11px] uppercase tracking-widest hover:border-cyan hover:text-cyan disabled:opacity-50"
-        >
-          {phase === "checking" ? "scanning…" : "check duplicates"}
-        </button>
+        {(s1 === "passed" || s1 === "failed") && (
+          <button
+            type="button"
+            onClick={reset}
+            disabled={wizardRunning}
+            className="font-mono text-[10px] uppercase tracking-widest text-white/40 hover:text-white/70"
+          >
+            reset
+          </button>
+        )}
       </div>
 
       {error && (
@@ -193,24 +282,68 @@ export function BountyAssistant({
         </div>
       )}
 
-      {formalizeFallback && (
-        <div className="border border-amber/40 bg-amber/10 p-2 font-mono text-[11px] text-amber">
-          ⚠ heuristic skeleton · 0G Compute autoformalize is offline. The YAML below has the
-          right shape but not a real Lean theorem signature — edit before posting.
+      {/* Step 1 outcome */}
+      {refine && (
+        <div className="border border-line p-3 flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <span className="font-mono text-[10px] uppercase tracking-widest text-white/60">
+              step 1 · {refine.outcome}
+              {refine.fallback && (
+                <span className="text-amber/80 ml-2">· heuristic mode</span>
+              )}
+            </span>
+          </div>
+          {refine.outcome === "valid" && (
+            <p className="font-sans text-sm text-cyan">
+              ✓ Input was already a parseable spec — going straight to rating.
+            </p>
+          )}
+          {refine.outcome === "refine" && (
+            <p className="font-sans text-sm text-white/80">
+              ✓ Translated to Lean 4. Spec drafted below.
+            </p>
+          )}
+          {refine.outcome === "operationalize" && refine.warning && (
+            <div className="border-l-2 border-amber/60 pl-3 py-1">
+              <p className="font-mono text-[10px] uppercase tracking-widest text-amber/80">
+                ⚠ stretched
+              </p>
+              <p className="font-sans text-sm text-white/85">{refine.warning}</p>
+            </div>
+          )}
+          {refine.outcome === "reject" && (
+            <div className="flex flex-col gap-2">
+              <p className="font-sans text-sm text-amber">
+                <strong>Not formalizable as a Lean 4 theorem.</strong>{" "}
+                {refine.rejection_reason}
+              </p>
+              {refine.suggested_redirect && (
+                <div className="border-l-2 border-cyan/40 pl-3 py-1">
+                  <p className="font-mono text-[10px] uppercase tracking-widest text-cyan/80 mb-1">
+                    suggested redirect
+                  </p>
+                  <p className="font-sans text-xs text-white/80">
+                    {refine.suggested_redirect}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+          {refine.parse_error && (
+            <div className="border border-amber/40 bg-amber/10 p-2 font-mono text-[10px] text-amber">
+              ⚠ LLM YAML didn't parse: {refine.parse_error}. Edit the spec below
+              and re-run the wizard.
+            </div>
+          )}
         </div>
       )}
 
-      {parseError && (
-        <div className="border border-amber/40 bg-amber/10 p-2 font-mono text-[11px] text-amber">
-          ⚠ LLM output didn't parse cleanly — {parseError}. Edit the YAML below and re-rate.
-        </div>
-      )}
-
+      {/* Step 2 outcome */}
       {rating && (
         <div className="border border-line p-3 flex flex-col gap-2">
           {rating.fallback && (
             <div className="font-mono text-[10px] uppercase tracking-widest text-amber/80">
-              ⚠ heuristic mode · 0G Compute provider unreachable
+              ⚠ heuristic rating · 0G Compute provider unreachable
             </div>
           )}
           <div className="flex items-center justify-between">
@@ -238,8 +371,7 @@ export function BountyAssistant({
               <span className="font-sans text-amber text-sm">
                 <strong>Research-grade.</strong> Both novelty and difficulty
                 rate ≥ 9 — a long-standing open problem requiring an insight
-                that has resisted experts. Posters should expect long-tail
-                attempts.
+                that has resisted experts.
               </span>
             </div>
           )}
@@ -249,26 +381,23 @@ export function BountyAssistant({
         </div>
       )}
 
-      {duplicates && (
+      {/* Step 3 outcome */}
+      {dup && (
         <div className="border border-line p-3 flex flex-col gap-1.5">
-          {duplicates.warning_level === "ok" ? (
+          {dup.warning_level === "ok" ? (
             <p className="font-mono text-[11px] text-cyan">
               ✓ no near-duplicates found in the existing bounty roster
             </p>
           ) : (
             <>
               <p
-                className={`font-mono text-[11px] uppercase tracking-widest ${
-                  duplicates.warning_level === "block"
-                    ? "text-amber"
-                    : "text-amber/80"
-                }`}
+                className={`font-mono text-[11px] uppercase tracking-widest ${dup.warning_level === "block" ? "text-amber" : "text-amber/80"}`}
               >
-                {duplicates.warning_level === "block"
+                {dup.warning_level === "block"
                   ? "⛔ exact duplicate — would not deploy"
                   : "⚠ near-duplicate detected"}
               </p>
-              {duplicates.duplicates.map((d) => (
+              {dup.duplicates.map((d) => (
                 <div
                   key={d.bounty_id}
                   className="font-mono text-[11px] text-white/70 border-l-2 border-amber/40 pl-3"
@@ -283,6 +412,16 @@ export function BountyAssistant({
               ))}
             </>
           )}
+        </div>
+      )}
+
+      {/* Unlock indicator */}
+      {s3 === "passed" && (
+        <div className="border border-cyan bg-cyan/15 px-3 py-2 font-mono text-[11px] text-cyan flex items-center gap-2">
+          <span>🔓</span>
+          <span>
+            spec unlocked — review the YAML below, then mint demo USDC and post.
+          </span>
         </div>
       )}
     </div>

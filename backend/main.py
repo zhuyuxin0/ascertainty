@@ -32,6 +32,7 @@ from backend.og_compute import (
     explain_verification,
     formalize_claim,
     rate_spec,
+    refine_input,
 )
 from backend.og_storage import upload_attestation
 from backend.spec import SpecError, parse_spec, spec_hash
@@ -123,6 +124,35 @@ class PrepareCreateBody(BaseModel):
 class FormalizeBody(BaseModel):
     description: str
     tags: list[str] | None = None
+
+
+@app.post("/bounty/assist/refine")
+async def assist_refine(body: FormalizeBody) -> dict[str, Any]:
+    """Step 1 of the bounty wizard. Classifies user input as
+    valid / refine / operationalize / reject. The frontend gates the
+    next step on the outcome — only valid/refine/operationalize unlock
+    the rate + dedup steps; reject blocks with a redirect suggestion.
+
+    For refine + operationalize, validates that the LLM's YAML actually
+    parses; if not, surfaces the parse error so the user can edit
+    inline. Always returns a dict with `outcome` plus the relevant
+    fields; never 503s."""
+    if not body.description.strip():
+        raise HTTPException(status_code=400, detail="input is required")
+    result = await refine_input(body.description, body.tags)
+    # Validate any returned YAML parses; don't strip it on parse error,
+    # so the user can fix it inline.
+    if result.get("spec_yaml"):
+        try:
+            raw = yaml.safe_load(result["spec_yaml"])
+            if isinstance(raw, dict):
+                parse_spec(raw)
+                result["parse_error"] = None
+            else:
+                result["parse_error"] = "LLM output is not a YAML mapping"
+        except (SpecError, yaml.YAMLError) as e:
+            result["parse_error"] = str(e)
+    return result
 
 
 @app.post("/bounty/assist/formalize")

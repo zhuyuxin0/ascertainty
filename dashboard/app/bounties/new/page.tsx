@@ -84,6 +84,7 @@ export default function NewBountyPage() {
   const [error, setError] = useState<string | null>(null);
   const [prepared, setPrepared] = useState<Prepared | null>(null);
   const [phase, setPhase] = useState<"idle" | "preparing" | "approving" | "creating" | "notifying" | "done">("idle");
+  const [unlocked, setUnlocked] = useState(false);
   const [created, setCreated] = useState<{
     bountyId: number;
     onchainId: number | null;
@@ -287,48 +288,61 @@ export default function NewBountyPage() {
                 setSpecYaml(y);
                 setPrepared(null);
               }}
+              onUnlocked={(u) => {
+                setUnlocked(u);
+                if (!u) setPrepared(null);
+              }}
             />
 
-            <div>
-              <label className="block font-mono text-[10px] uppercase tracking-widest text-white/60 mb-2">
-                quick fill template
-              </label>
-              <div className="flex gap-2">
-                {Object.keys(SPEC_TEMPLATES).map((key) => (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => {
-                      setSpecYaml(SPEC_TEMPLATES[key]);
+            {!unlocked ? (
+              <div className="border border-line/40 p-6 font-mono text-xs text-white/40 text-center">
+                spec editor locked · run the wizard above (or paste a valid YAML
+                spec into the claim box and re-run) to unlock
+              </div>
+            ) : (
+              <>
+                <div>
+                  <label className="block font-mono text-[10px] uppercase tracking-widest text-white/60 mb-2">
+                    quick fill template
+                  </label>
+                  <div className="flex gap-2">
+                    {Object.keys(SPEC_TEMPLATES).map((key) => (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => {
+                          setSpecYaml(SPEC_TEMPLATES[key]);
+                          setPrepared(null);
+                        }}
+                        className="font-mono text-[10px] uppercase tracking-widest border border-line text-white/60 px-3 py-2 hover:border-cyan hover:text-cyan"
+                      >
+                        {key}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="spec"
+                    className="block font-mono text-[10px] uppercase tracking-widest text-white/60 mb-2"
+                  >
+                    bounty spec (YAML) · review before posting
+                  </label>
+                  <textarea
+                    id="spec"
+                    value={specYaml}
+                    onChange={(e) => {
+                      setSpecYaml(e.target.value);
                       setPrepared(null);
                     }}
-                    className="font-mono text-[10px] uppercase tracking-widest border border-line text-white/60 px-3 py-2 hover:border-cyan hover:text-cyan"
-                  >
-                    {key}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <label
-                htmlFor="spec"
-                className="block font-mono text-[10px] uppercase tracking-widest text-white/60 mb-2"
-              >
-                bounty spec (YAML)
-              </label>
-              <textarea
-                id="spec"
-                value={specYaml}
-                onChange={(e) => {
-                  setSpecYaml(e.target.value);
-                  setPrepared(null);
-                }}
-                rows={20}
-                className="w-full bg-bg border border-line text-white font-mono text-xs px-3 py-3 focus:border-cyan focus:outline-none whitespace-pre"
-                spellCheck={false}
-              />
-            </div>
+                    rows={20}
+                    className="w-full bg-bg border border-line text-white font-mono text-xs px-3 py-3 focus:border-cyan focus:outline-none whitespace-pre"
+                    spellCheck={false}
+                  />
+                </div>
+              </>
+            )}
 
             {/* Wallet status block */}
             {!isConnected ? (
@@ -377,7 +391,16 @@ export default function NewBountyPage() {
             )}
 
             <div className="flex flex-wrap gap-3">
-              {!prepared ? (
+              {!unlocked ? (
+                <button
+                  type="button"
+                  disabled
+                  className="border border-line/40 text-white/30 px-6 py-3 font-mono text-xs uppercase tracking-widest cursor-not-allowed"
+                  title="Run the wizard above first"
+                >
+                  prepare (locked)
+                </button>
+              ) : !prepared ? (
                 <button
                   type="button"
                   onClick={onPrepare}

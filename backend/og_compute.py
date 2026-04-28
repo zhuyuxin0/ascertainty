@@ -215,6 +215,194 @@ def _heuristic_rate(spec: BountySpec) -> dict[str, Any]:
     }
 
 
+async def refine_input(
+    user_input: str, hint_tags: list[str] | None = None,
+) -> dict[str, Any]:
+    """Classify user input into one of four outcomes:
+      valid          — input is already a parseable YAML bounty spec
+      refine         — English statement of a precise mathematical claim
+      operationalize — informal claim with genuine mathematical substrate
+                       that the agent had to sharpen
+      reject         — not formalizable as a Lean 4 theorem
+
+    Always returns a dict with `outcome` plus the relevant fields. Falls
+    back to heuristics when 0G Compute is unreachable. Bias is toward
+    rejection for empirical real-world claims (e.g. comparing AI products,
+    measurable physical phenomena) — those route to a redirect suggestion
+    rather than a hallucinated Lean spec."""
+    # Fast path: input already parses as a valid YAML bounty spec.
+    try:
+        import yaml as _yaml
+        parsed = _yaml.safe_load(user_input)
+        if isinstance(parsed, dict) and "theorem_signature" in parsed and "bounty_id" in parsed:
+            from backend.spec import parse_spec, SpecError
+            try:
+                parse_spec(parsed)
+                return {
+                    "outcome": "valid",
+                    "spec_yaml": user_input,
+                    "fallback": False,
+                }
+            except SpecError:
+                pass  # fall through to LLM refine
+    except Exception:
+        pass
+
+    got = await _ensure_client()
+    if got is None:
+        return _heuristic_refine(user_input, hint_tags)
+    client, svc = got
+    import time as _time
+    now_ts = int(_time.time())
+    default_deadline = now_ts + 86400 * 14
+    tags_str = ", ".join(hint_tags) if hint_tags else "(infer from input)"
+
+    system = (
+        "You are an Ascertainty bounty refiner. Classify user input into "
+        "exactly ONE of four outcomes:\n\n"
+        "REFINE — input is a clear English statement of a mathematical or "
+        "algorithmic theorem that translates directly to Lean 4. Examples:\n"
+        "  • 'Prove that every continuous function on a closed interval "
+        "attains its max.'\n"
+        "  • 'mergeSort returns a sorted permutation of its input.'\n"
+        "  • 'ERC-20 transfer preserves total supply.'\n"
+        "Output a complete YAML bounty spec.\n\n"
+        "OPERATIONALIZE — input is genuine mathematical/algorithmic intent "
+        "but uses informal language requiring sharpening (missing quantifiers, "
+        "vague domains, undefined relations). The agent precises it. "
+        "Examples:\n"
+        "  • 'Newton's method converges fast' → 'For f ∈ C² with f'(x*)≠0, "
+        "Newton iterates converge quadratically.'\n"
+        "  • 'Primes are dense enough' → an explicit density-bound theorem.\n"
+        "Output a YAML spec PLUS a `warning` explaining what was sharpened.\n\n"
+        "REJECT — input cannot be made into a Lean 4 theorem. Categories:\n"
+        "  1. Non-claims: 'make me rich', commands not statements.\n"
+        "  2. Subjective opinions without measurable substrate.\n"
+        "  3. Empirical claims about real-world non-formal entities (people, "
+        "products, companies, AI models). 'Claude is better than ChatGPT at "
+        "X' — there is no formal model of these entities in Lean. These are "
+        "benchmarkable but not deductively provable.\n"
+        "  4. Physical claims with no formal model: 'sky is blue', "
+        "'gravity exists'.\n"
+        "  5. Already-known-false statements.\n"
+        "When rejecting you MUST include a `suggested_redirect` field "
+        "(2-3 sentences) explaining where this claim COULD be verified — "
+        "e.g. a benchmark platform, a prediction market, Ascertainty's "
+        "Phase-2 numerical/PINN track for empirical engineering claims.\n\n"
+        "Be strict: when in doubt about whether a claim has a formal "
+        "model in Lean, REJECT. Honoring 'help me make this pass' means "
+        "being honest about what Lean can verify, not stretching impossible "
+        "claims into bogus theorems.\n\n"
+        f"current_unix_time = {now_ts}. deadline_unix in any output spec "
+        f"MUST be > {now_ts + 86400 * 7}. A reasonable default is "
+        f"{default_deadline}.\n\n"
+        "Standard YAML schema:\n"
+        "  bounty_id: <kebab-slug>\n"
+        "  description: |\n    <2-4 sentences>\n"
+        "  theorem_signature: \"<Lean 4 statement>\"\n"
+        "  mathlib_sha: 5b1c4e7\n"
+        "  lean_toolchain: \"leanprover/lean4:v4.10.0\"\n"
+        "  axiom_whitelist:\n    - propext\n    - Classical.choice\n    - Quot.sound\n"
+        "  bounty_usdc: <integer, 6-decimals>\n"
+        "  deadline_unix: <integer>\n"
+        "  challenge_window_seconds: <60-3600>\n"
+        "  tags:\n    - <topic-tags>\n\n"
+        "Return ONLY a JSON object, no fences:\n"
+        '  {"outcome": "refine|operationalize|reject",\n'
+        '   "spec_yaml": "<YAML string, only for refine|operationalize>",\n'
+        '   "warning": "<for operationalize: what was sharpened>",\n'
+        '   "rejection_reason": "<for reject: why not Lean-provable>",\n'
+        '   "suggested_redirect": "<for reject: where this could go>"}'
+    )
+    user = (
+        f"current_unix_time = {now_ts}\n"
+        f"User input:\n{user_input}\n\n"
+        f"Tag hints: {tags_str}\n\n"
+        f"Classify and respond."
+    )
+    try:
+        resp = await client.chat.completions.create(
+            model=getattr(svc, "model", None),
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            max_tokens=800,
+            temperature=0.2,
+        )
+        text = (resp.choices[0].message.content or "").strip()
+        if text.startswith("```"):
+            text = text.strip("`")
+            if text.startswith("json\n"):
+                text = text[5:]
+        import json as _json
+        parsed = _json.loads(text)
+        outcome = str(parsed.get("outcome", "")).lower()
+        if outcome not in ("refine", "operationalize", "reject"):
+            log.warning("compute: refine_input got unexpected outcome %r", outcome)
+            return _heuristic_refine(user_input, hint_tags)
+        result = {"outcome": outcome, "fallback": False}
+        if outcome in ("refine", "operationalize"):
+            spec_yaml = parsed.get("spec_yaml", "")
+            if not spec_yaml:
+                return _heuristic_refine(user_input, hint_tags)
+            result["spec_yaml"] = spec_yaml
+            if outcome == "operationalize":
+                result["warning"] = parsed.get("warning") or ""
+        else:
+            result["rejection_reason"] = parsed.get("rejection_reason") or ""
+            result["suggested_redirect"] = parsed.get("suggested_redirect") or ""
+        return result
+    except Exception as e:
+        log.warning("compute: refine_input failed: %s — falling back to heuristic", e)
+        return _heuristic_refine(user_input, hint_tags)
+
+
+def _heuristic_refine(user_input: str, hint_tags: list[str] | None) -> dict[str, Any]:
+    """Heuristic refine fallback. Recognises a few rejection patterns
+    explicitly; otherwise yields an operationalize-with-warning result so
+    the user can still post (with the warning that the agent didn't get
+    to think hard about the claim)."""
+    text = user_input.lower()
+    rejection_patterns = [
+        ("non_claim", ["make me rich", "lol", "help me", "to do", "i want to", "asdf"]),
+        ("subjective", ["best", "worst", "coolest", "favorite", "more fun"]),
+        ("ai_product_compare", ["chatgpt", "gpt-", "claude", "gemini", "deepseek", "anthropic", "openai"]),
+        ("physical", ["sky is blue", "gravity", "speed of light"]),
+    ]
+    for kind, kws in rejection_patterns:
+        if any(k in text for k in kws):
+            return {
+                "outcome": "reject",
+                "rejection_reason": (
+                    "This claim isn't formalizable as a Lean 4 theorem in our "
+                    "current scope. Lean 4 verification requires a precise "
+                    "mathematical statement with a deductive proof. (Heuristic "
+                    "rejection — 0G Compute is offline and the agent couldn't "
+                    "reason in detail.)"
+                ),
+                "suggested_redirect": (
+                    "Empirical or comparison claims like this would fit "
+                    "Ascertainty's Phase-2 numerical/benchmark track once it "
+                    "ships. For now, redirect to a prediction market or a "
+                    "benchmark suite that operationalizes the comparison."
+                ),
+                "fallback": True,
+            }
+    # Otherwise treat as operationalize with the heuristic skeleton
+    skel = _heuristic_formalize(user_input, hint_tags)
+    return {
+        "outcome": "operationalize",
+        "spec_yaml": skel["spec_yaml"],
+        "warning": (
+            "Heuristic operationalization — 0G Compute is offline so the agent "
+            "couldn't sharpen the claim. The YAML below has the right shape but "
+            "the theorem signature is a placeholder. Edit it before posting."
+        ),
+        "fallback": True,
+    }
+
+
 async def formalize_claim(
     description: str, hint_tags: list[str] | None = None,
 ) -> Optional[dict[str, Any]]:
