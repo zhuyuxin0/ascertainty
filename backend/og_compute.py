@@ -26,7 +26,6 @@ from backend.verifier import VerificationResult
 
 log = logging.getLogger("ascertainty.compute")
 
-_async_client = None
 _service = None
 _lock = asyncio.Lock()
 _disabled = False  # latches on first init failure — don't retry per-request
@@ -56,15 +55,17 @@ def _pick_chat_service(services: list) -> Any:
 
 
 async def _ensure_client():
-    global _async_client, _service, _disabled
+    """Return (fresh_async_client, service). The OpenAI-compat client is
+    rebuilt every call because 0G Compute requires freshly TEE-signed
+    headers per request — caching the client past a few minutes leads to
+    'service not acknowledge the tee signer' 400s. The service descriptor
+    (provider address, model name, base URL) is stable and gets cached
+    once for cheap re-use."""
+    global _service, _disabled
     if _disabled:
         return None
-    if _async_client and _service:
-        return _async_client, _service
 
     async with _lock:
-        if _async_client and _service:
-            return _async_client, _service
         _map_env()
         if not os.getenv("A0G_PRIVATE_KEY"):
             log.warning("compute: no A0G_PRIVATE_KEY / OG_PRIVATE_KEY, disabled")
@@ -75,24 +76,27 @@ async def _ensure_client():
 
             loop = asyncio.get_running_loop()
 
-            def _init():
+            def _build():
                 a = A0G()
-                services = a.get_all_services()
-                if not services:
-                    raise RuntimeError("no 0G Compute services available")
-                svc = _pick_chat_service(services)
+                if _service is None:
+                    services = a.get_all_services()
+                    if not services:
+                        raise RuntimeError("no 0G Compute services available")
+                    svc = _pick_chat_service(services)
+                else:
+                    svc = _service
                 client = a.get_openai_async_client(svc.provider)
                 return client, svc
 
-            client, svc = await loop.run_in_executor(None, _init)
-            _async_client = client
-            _service = svc
-            log.info(
-                "compute: ready (provider=%s model=%s)",
-                getattr(svc, "provider", "?"),
-                getattr(svc, "model", "?"),
-            )
-            return _async_client, _service
+            client, svc = await loop.run_in_executor(None, _build)
+            if _service is None:
+                _service = svc
+                log.info(
+                    "compute: ready (provider=%s model=%s)",
+                    getattr(svc, "provider", "?"),
+                    getattr(svc, "model", "?"),
+                )
+            return client, svc
         except Exception as e:
             log.warning("compute: init failed (%s); disabling for this process", e)
             _disabled = True
@@ -145,18 +149,82 @@ async def explain_verification(
         return None
 
 
+def _heuristic_formalize(description: str, hint_tags: list[str] | None) -> dict[str, Any]:
+    """Deterministic fallback for autoformalize when 0G Compute is unreachable.
+    Doesn't try to be clever — produces a syntactically valid spec skeleton
+    seeded with the user's description so they can edit before posting."""
+    import re, time
+    slug = re.sub(r"[^a-z0-9]+", "-", description.lower()).strip("-")[:40] or "user-bounty"
+    tags = hint_tags or ["user-submitted"]
+    deadline = int(time.time()) + 86400 * 14
+    yaml_text = (
+        f"bounty_id: {slug}\n"
+        f"description: |\n  {description.strip()}\n"
+        f"theorem_signature: \"<insert Lean 4 theorem signature — 0G Compute autoformalize is offline>\"\n"
+        f"mathlib_sha: 5b1c4e7\n"
+        f"lean_toolchain: \"leanprover/lean4:v4.10.0\"\n"
+        f"axiom_whitelist:\n  - propext\n  - Classical.choice\n  - Quot.sound\n"
+        f"bounty_usdc: 1000000000\n"
+        f"deadline_unix: {deadline}\n"
+        f"challenge_window_seconds: 600\n"
+        f"tags:\n"
+        + "".join(f"  - {t}\n" for t in tags)
+    )
+    return {"spec_yaml": yaml_text, "fallback": True}
+
+
+def _heuristic_rate(spec: BountySpec) -> dict[str, Any]:
+    """Heuristic novelty + difficulty when 0G Compute is offline. Looks at
+    surface signals: theorem length, axiom whitelist breadth, mathlib_sha
+    presence, and Erdős-style keywords in description/tags."""
+    import re
+    theorem = spec.theorem_signature or ""
+    desc = (spec.description or "") + " " + " ".join(spec.tags)
+    desc_l = desc.lower()
+    # Novelty heuristic: keyword presence + tag rarity
+    erdos_kw = any(
+        k in desc_l for k in ("erdős", "erdos", "open problem", "conjecture",
+                              "unsolved", "open conjecture", "research")
+    )
+    novelty = 9 if erdos_kw else max(2, min(7, len(theorem) // 60 + 3))
+    # Difficulty heuristic: theorem length + axiom count
+    difficulty = max(2, min(9, len(theorem) // 40 + len(spec.axiom_whitelist)))
+    if erdos_kw and difficulty < 9:
+        difficulty = 9
+    erdos_class = novelty >= 9 and difficulty >= 9
+    if novelty <= 2 or difficulty <= 1:
+        recommendation = "reject"
+    elif novelty <= 4:
+        recommendation = "refine"
+    else:
+        recommendation = "post"
+    reasoning = (
+        "Heuristic rating (0G Compute offline). Novelty derived from theorem-keyword "
+        "match and tag rarity; difficulty from theorem length and axiom-whitelist breadth."
+    )
+    return {
+        "novelty": novelty,
+        "difficulty": difficulty,
+        "reasoning": reasoning,
+        "recommendation": recommendation,
+        "erdos_class": erdos_class,
+        "fallback": True,
+    }
+
+
 async def formalize_claim(
     description: str, hint_tags: list[str] | None = None,
 ) -> Optional[dict[str, Any]]:
     """Autoformalize: turn a plain-English claim into a draft bounty spec
     (theorem_signature + axiom_whitelist + suggested mathlib_sha + USDC
-    estimate + deadline). Returns None if 0G Compute is unavailable.
+    estimate + deadline). Falls back to a heuristic skeleton when 0G
+    Compute is unreachable so the demo never 503s.
 
     The LLM sees prior bounty examples in-context so its output matches
     the spec format Ascertainty expects."""
     got = await _ensure_client()
     if got is None:
-        return None
+        return _heuristic_formalize(description, hint_tags)
     client, svc = got
     tags_str = ", ".join(hint_tags) if hint_tags else "(none — infer from claim)"
     system = (
@@ -206,10 +274,10 @@ async def formalize_claim(
                 text = text[5:]
         # The endpoint returns the raw YAML string; the FastAPI wrapper will
         # validate by passing through parse_spec.
-        return {"spec_yaml": text}
+        return {"spec_yaml": text, "fallback": False}
     except Exception as e:
-        log.warning("compute: formalize_claim failed: %s", e)
-        return None
+        log.warning("compute: formalize_claim failed: %s — falling back to heuristic", e)
+        return _heuristic_formalize(description, hint_tags)
 
 
 async def rate_spec(
@@ -222,10 +290,11 @@ async def rate_spec(
 
     Returns {novelty, difficulty, reasoning, recommendation, erdos_class}.
     The recommendation is rule-derived from the two scores so it's
-    deterministic given the LLM's numeric output."""
+    deterministic given the LLM's numeric output. Falls back to a
+    heuristic rating when 0G Compute is unreachable."""
     got = await _ensure_client()
     if got is None:
-        return None
+        return _heuristic_rate(spec)
     client, svc = got
 
     prior_summary = "\n".join(
@@ -287,10 +356,11 @@ async def rate_spec(
             "reasoning": reasoning,
             "recommendation": recommendation,
             "erdos_class": erdos_class,
+            "fallback": False,
         }
     except Exception as e:
-        log.warning("compute: rate_spec failed: %s", e)
-        return None
+        log.warning("compute: rate_spec failed: %s — falling back to heuristic", e)
+        return _heuristic_rate(spec)
 
 
 async def explain_spec(spec: BountySpec) -> Optional[str]:

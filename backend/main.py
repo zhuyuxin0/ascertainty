@@ -135,9 +135,11 @@ async def assist_formalize(body: FormalizeBody) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="description is required")
     result = await formalize_claim(body.description, body.tags)
     if result is None:
+        # _heuristic_formalize is called inside formalize_claim, so None
+        # here indicates a bug rather than provider downtime
         raise HTTPException(
-            status_code=503,
-            detail="0G Compute autoformalize unavailable — try again or write the YAML manually",
+            status_code=500,
+            detail="autoformalize returned no result",
         )
     # Validate the LLM output parses; if not, surface the raw YAML so the
     # user can fix it inline rather than losing the suggestion entirely.
@@ -151,7 +153,11 @@ async def assist_formalize(body: FormalizeBody) -> dict[str, Any]:
             parse_error = "LLM output is not a YAML mapping"
     except (SpecError, yaml.YAMLError) as e:
         parse_error = str(e)
-    return {"spec_yaml": spec_yaml, "parse_error": parse_error}
+    return {
+        "spec_yaml": spec_yaml,
+        "parse_error": parse_error,
+        "fallback": bool(result.get("fallback")),
+    }
 
 
 class RateBody(BaseModel):
@@ -173,10 +179,7 @@ async def assist_rate(body: RateBody) -> dict[str, Any]:
     prior = await db.latest_bounties(limit=20)
     rating = await rate_spec(spec, prior)
     if rating is None:
-        raise HTTPException(
-            status_code=503,
-            detail="0G Compute rating unavailable",
-        )
+        raise HTTPException(status_code=500, detail="rating returned no result")
     return rating
 
 

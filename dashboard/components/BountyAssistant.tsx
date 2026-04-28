@@ -10,6 +10,7 @@ type Rating = {
   reasoning: string;
   recommendation: "post" | "refine" | "reject";
   erdos_class: boolean;
+  fallback?: boolean;
 };
 
 type Duplicate = {
@@ -48,6 +49,7 @@ export function BountyAssistant({
   const [rating, setRating] = useState<Rating | null>(null);
   const [duplicates, setDuplicates] = useState<DuplicateResp | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
+  const [formalizeFallback, setFormalizeFallback] = useState(false);
 
   async function onFormalize() {
     setError(null);
@@ -73,6 +75,7 @@ export function BountyAssistant({
       const data = await res.json();
       if (data.spec_yaml) setSpecYaml(data.spec_yaml);
       if (data.parse_error) setParseError(data.parse_error);
+      setFormalizeFallback(Boolean(data.fallback));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -190,6 +193,13 @@ export function BountyAssistant({
         </div>
       )}
 
+      {formalizeFallback && (
+        <div className="border border-amber/40 bg-amber/10 p-2 font-mono text-[11px] text-amber">
+          ⚠ heuristic skeleton · 0G Compute autoformalize is offline. The YAML below has the
+          right shape but not a real Lean theorem signature — edit before posting.
+        </div>
+      )}
+
       {parseError && (
         <div className="border border-amber/40 bg-amber/10 p-2 font-mono text-[11px] text-amber">
           ⚠ LLM output didn't parse cleanly — {parseError}. Edit the YAML below and re-rate.
@@ -198,6 +208,11 @@ export function BountyAssistant({
 
       {rating && (
         <div className="border border-line p-3 flex flex-col gap-2">
+          {rating.fallback && (
+            <div className="font-mono text-[10px] uppercase tracking-widest text-amber/80">
+              ⚠ heuristic mode · 0G Compute provider unreachable
+            </div>
+          )}
           <div className="flex items-center justify-between">
             <div className="flex gap-3 items-baseline">
               <span className="font-mono text-[10px] uppercase tracking-widest text-white/40">
