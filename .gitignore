@@ -28,6 +28,10 @@ data/*.db-journal
 data/*.db-wal
 data/*.db-shm
 data/telegram_subs.json
+data/personas.json
+
+# Claude Code local settings (not for public repo)
+.claude/settings.local.json
 
 # OS
 .DS_Store

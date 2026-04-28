@@ -3,7 +3,7 @@
 # Run from your local machine. Pass the SSH target as the first argument.
 #
 # Usage:
-#   ./scripts/deploy-contabo.sh <your-ssh-alias>          # uses ~/.ssh/config alias
+#   ./scripts/deploy-contabo.sh <ssh-alias>       # uses ~/.ssh/config alias
 #   ./scripts/deploy-contabo.sh root@1.2.3.4
 #
 # Prerequisites on the VPS:

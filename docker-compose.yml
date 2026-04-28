@@ -1,8 +1,7 @@
-# Ascertainty backend stack — runs on the Contabo VPS alongside the
-# existing <redacted-host> setup. The host's nginx (already running on
-# :80/:443) reverse-proxies api.ascertainty.xyz → 127.0.0.1:8000 here;
-# Let's Encrypt cert via certbot --nginx. Caddy NOT used because nginx
-# already owns the public ports.
+# Ascertainty backend stack — runs on a Docker + nginx VPS. The host's
+# nginx (port 80/443) reverse-proxies api.ascertainty.xyz → 127.0.0.1:8000
+# here; Let's Encrypt cert via certbot --nginx. Caddy NOT used because
+# nginx already owns the public ports.
 #
 # Usage on the VPS:
 #   1. Place .env beside this file (NEVER commit; same env keys as the
