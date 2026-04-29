@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <rect width="64" height="64" fill="#04050A"/>
+  <!-- Outer octahedron silhouette: a verified-claim mark.
+       Same form as the BountyNode geometry in the cosmos. -->
+  <path d="M32 8 L52 32 L32 56 L12 32 Z" stroke="#00D4AA" stroke-width="2.5" stroke-linejoin="round" fill="none"/>
+  <!-- Inner crest: the diamond's negative — the kernel-checked core -->
+  <path d="M32 20 L42 32 L32 44 L22 32 Z" fill="#00D4AA" fill-opacity="0.18" stroke="#00D4AA" stroke-width="1" stroke-linejoin="round"/>
+  <!-- Center dot: the proof point, the moment of acceptance -->
+  <circle cx="32" cy="32" r="2.5" fill="#7DD3F7"/>
+</svg>

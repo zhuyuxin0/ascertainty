@@ -40,8 +40,11 @@ type Props = {
   onActiveRegion?: (r: Region | null) => void;
   onSelectModel?: (m: AtlasModel | null) => void;
   onSelectMarket?: (m: AtlasMarket | null) => void;
+  onSelectPersona?: (slug: string) => void;
   bandLock?: ZoomBand | null;
   onBandChange?: (band: ZoomBand) => void;
+  /** Increment to trigger a fly-back to the default cosmos overview. */
+  resetNonce?: number;
 };
 
 type AtlasBounty = {
@@ -76,6 +79,18 @@ export function CosmosScene(props: Props) {
   const [markets, setMarkets] = useState<AtlasMarket[]>([]);
   const [bounties, setBounties] = useState<AtlasBounty[]>([]);
   const [flyTarget, setFlyTarget] = useState<FlyTarget | null>(null);
+
+  // Watch resetNonce — increment from parent triggers a fly-back to the
+  // cosmos overview. We pass z=1 so the camera lands "in front of"
+  // origin at distance 1500 along the +z axis (the original view).
+  useEffect(() => {
+    if (props.resetNonce === undefined) return;
+    setFlyTarget({ x: 0, y: 0, z: 0, distance: 1500 });
+    // We need the camera to end up along +z; the FlyToController computes
+    // direction from current position. As long as user hasn't gone deep
+    // behind the cosmos, the +z bias is preserved by their own orbit.
+    // Worst case the camera flies along whatever direction it's at — fine.
+  }, [props.resetNonce]);
 
   useEffect(() => {
     fetch(`${API_URL}/atlas/models`)
@@ -172,7 +187,7 @@ export function CosmosScene(props: Props) {
       <CrossDomainArcs models={models} markets={markets} />
 
       {/* Wandering persona minions — Andy / Carl / Bea drift between regions */}
-      <MinionCapsules />
+      <MinionCapsules onSelectPersona={props.onSelectPersona} />
 
       {/* Camera distance → zoom band signaller, with optional clamp when locked. */}
       <CameraBandController
@@ -1229,7 +1244,11 @@ type MinionPersona = {
  *  appear as capsule minions wandering between regions. Each capsule
  *  bounces in idle and slowly drifts along a Lissajous curve so the
  *  cosmos has *life* even when the user isn't interacting. */
-export function MinionCapsules() {
+export function MinionCapsules({
+  onSelectPersona,
+}: {
+  onSelectPersona?: (slug: string) => void;
+}) {
   const [personas, setPersonas] = useState<MinionPersona[]>([]);
 
   useEffect(() => {
@@ -1242,16 +1261,28 @@ export function MinionCapsules() {
   return (
     <group>
       {personas.map((p, i) => (
-        <MinionCapsule key={p.slug} persona={p} index={i} />
+        <MinionCapsule
+          key={p.slug}
+          persona={p}
+          index={i}
+          onSelectPersona={onSelectPersona}
+        />
       ))}
     </group>
   );
 }
 
-function MinionCapsule({ persona, index }: { persona: MinionPersona; index: number }) {
+function MinionCapsule({
+  persona,
+  index,
+  onSelectPersona,
+}: {
+  persona: MinionPersona;
+  index: number;
+  onSelectPersona?: (slug: string) => void;
+}) {
   const ref = useRef<THREE.Group>(null);
   const [hovered, setHovered] = useState(false);
-  const router = useRouter();
 
   const color = useMemo(() => new THREE.Color(persona.color), [persona.color]);
 
@@ -1288,7 +1319,7 @@ function MinionCapsule({ persona, index }: { persona: MinionPersona; index: numb
       }}
       onClick={(e) => {
         e.stopPropagation();
-        router.push("/agent");
+        onSelectPersona?.(persona.slug);
       }}
     >
       {/* The capsule body — cylinder + sphere caps for r142- compatibility */}

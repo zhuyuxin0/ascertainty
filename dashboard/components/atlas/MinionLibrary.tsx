@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAccount } from "wagmi";
 
@@ -37,9 +36,11 @@ const EXPLORER = "https://chainscan-galileo.0g.ai";
 export function MinionLibrary({
   refreshNonce,
   onMintClick,
+  onSelectPersona,
 }: {
   refreshNonce?: number;
   onMintClick?: () => void;
+  onSelectPersona?: (slug: string) => void;
 }) {
   const { address, isConnected } = useAccount();
   const [personas, setPersonas] = useState<Persona[]>([]);
@@ -64,7 +65,15 @@ export function MinionLibrary({
       .catch(() => setOwned([]));
   }, [address, isConnected, refreshNonce]);
 
+  const PAGE_SIZE = 8;
+  const [page, setPage] = useState(0);
+
   const totalCount = personas.length + owned.length;
+  const pageCount = Math.max(1, Math.ceil(owned.length / PAGE_SIZE));
+  const safePage = Math.min(page, pageCount - 1);
+  const pageStart = safePage * PAGE_SIZE;
+  const visibleOwned = owned.slice(pageStart, pageStart + PAGE_SIZE);
+
   if (totalCount === 0 && !isConnected) return null;
 
   return (
@@ -114,7 +123,7 @@ export function MinionLibrary({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 30 }}
             transition={{ duration: 0.3 }}
-            className="border border-line border-b-0 bg-bg/90 backdrop-blur"
+            className="border border-line border-b-0 bg-bg/90 backdrop-blur max-h-[60vh] overflow-y-auto w-[min(96vw,1080px)]"
           >
             <div className="flex items-center justify-between px-5 py-2 border-b border-line/60">
               <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-cyan/70">
@@ -152,24 +161,58 @@ export function MinionLibrary({
               </div>
               <div className="flex gap-3 overflow-x-auto pb-1">
                 {personas.map((p) => (
-                  <MinionThumb key={p.slug} persona={p} />
+                  <MinionThumb
+                    key={p.slug}
+                    persona={p}
+                    onSelectPersona={onSelectPersona}
+                  />
                 ))}
               </div>
             </div>
 
-            {/* Owned MinionNFTs row */}
+            {/* Owned MinionNFTs row — paginated grid (8 per page) so the
+                drawer height stays bounded as the library grows. */}
             {(owned.length > 0 || isConnected) && (
               <div className="px-4 pt-3 pb-4">
-                <div className="font-mono text-[9px] uppercase tracking-widest text-white/40 mb-1.5">
-                  your minions · {owned.length} minted
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="font-mono text-[9px] uppercase tracking-widest text-white/40">
+                    your minions · {owned.length} minted
+                  </div>
+                  {pageCount > 1 && (
+                    <div className="flex items-center gap-2 font-mono text-[9px] uppercase tracking-widest text-white/50">
+                      <button
+                        type="button"
+                        onClick={() => setPage(Math.max(0, safePage - 1))}
+                        disabled={safePage === 0}
+                        className="border border-line px-2 py-0.5 hover:border-cyan hover:text-cyan disabled:opacity-30"
+                        aria-label="previous page"
+                      >
+                        ←
+                      </button>
+                      <span className="tabular-nums">
+                        {safePage + 1} / {pageCount}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setPage(Math.min(pageCount - 1, safePage + 1))
+                        }
+                        disabled={safePage >= pageCount - 1}
+                        className="border border-line px-2 py-0.5 hover:border-cyan hover:text-cyan disabled:opacity-30"
+                        aria-label="next page"
+                      >
+                        →
+                      </button>
+                    </div>
+                  )}
                 </div>
                 {owned.length === 0 ? (
                   <div className="border border-dashed border-line/60 p-4 font-mono text-[10px] text-white/40 text-center">
                     no minions yet — click ✨ mint minion above
                   </div>
                 ) : (
-                  <div className="flex gap-3 overflow-x-auto pb-1">
-                    {owned.map((m) => (
+                  <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-3">
+                    {visibleOwned.map((m) => (
                       <MinionCard
                         key={m.token_id}
                         tokenId={m.token_id}
@@ -191,7 +234,13 @@ export function MinionLibrary({
   );
 }
 
-function MinionThumb({ persona }: { persona: Persona }) {
+function MinionThumb({
+  persona,
+  onSelectPersona,
+}: {
+  persona: Persona;
+  onSelectPersona?: (slug: string) => void;
+}) {
   return (
     <div
       className="border bg-bg/60 p-3 w-56 flex flex-col gap-2"
@@ -245,12 +294,13 @@ function MinionThumb({ persona }: { persona: Persona }) {
           ))}
         </div>
       )}
-      <Link
-        href="/agent"
-        className="font-mono text-[9px] uppercase tracking-widest text-white/40 hover:text-cyan mt-1"
+      <button
+        type="button"
+        onClick={() => onSelectPersona?.(persona.slug)}
+        className="font-mono text-[9px] uppercase tracking-widest text-white/40 hover:text-cyan mt-1 text-left"
       >
         inspect →
-      </Link>
+      </button>
     </div>
   );
 }

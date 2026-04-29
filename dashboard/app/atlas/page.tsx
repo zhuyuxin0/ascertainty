@@ -5,9 +5,12 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 
 import { ASCertaintyOverlay } from "@/components/atlas/ASCertaintyOverlay";
+import { AtlasWalkthrough } from "@/components/atlas/AtlasWalkthrough";
+import { Logomark } from "@/components/atlas/Logomark";
 import { MinionLibrary } from "@/components/atlas/MinionLibrary";
 import { MintMinionDialog } from "@/components/atlas/MintMinionDialog";
 import { ModelSidePanel, MarketSidePanel } from "@/components/atlas/SidePanel";
+import { PersonaDetailPanel } from "@/components/atlas/PersonaDetailPanel";
 import { RegionLasso } from "@/components/atlas/RegionLasso";
 import { type Region } from "@/lib/atlas/regions";
 import { type AtlasModel, type AtlasMarket } from "@/lib/atlas/types";
@@ -39,6 +42,17 @@ export default function AtlasPage() {
   const [mintOpen, setMintOpen] = useState(false);
   const [mintNonce, setMintNonce] = useState(0);
   const [lassoActive, setLassoActive] = useState(false);
+  const [selectedPersonaSlug, setSelectedPersonaSlug] = useState<string | null>(null);
+  const [resetNonce, setResetNonce] = useState(0);
+
+  const resetView = () => {
+    setBandLock(null);
+    setSelectedModel(null);
+    setSelectedMarket(null);
+    setSelectedPersonaSlug(null);
+    setActiveRegion(null);
+    setResetNonce((n) => n + 1);
+  };
 
   const displayBand = bandLock ?? currentBand;
 
@@ -76,8 +90,10 @@ export default function AtlasPage() {
             setSelectedMarket(m);
             if (m) setSelectedModel(null);
           }}
+          onSelectPersona={setSelectedPersonaSlug}
           bandLock={bandLock}
           onBandChange={setCurrentBand}
+          resetNonce={resetNonce}
         />
       </div>
 
@@ -90,12 +106,23 @@ export default function AtlasPage() {
         onClose={() => setSelectedMarket(null)}
       />
 
-      {/* HUD: brand + breadcrumb */}
-      <div className="absolute top-4 left-6 z-30 flex items-center gap-3 pointer-events-none">
-        <span className="font-display text-2xl text-cyan tracking-wide">
-          Ascertainty
-        </span>
-        <span className="font-mono text-[10px] uppercase tracking-widest text-white/40 flex items-center gap-1">
+      {/* HUD: brand + breadcrumb. The wordmark+logomark is the "home"
+          affordance — clicking flies the camera back to the cosmos
+          overview and clears any selection / band-lock. */}
+      <div className="absolute top-4 left-6 z-30 flex items-center gap-3">
+        <button
+          type="button"
+          onClick={resetView}
+          className="pointer-events-auto flex items-center gap-2 group"
+          title="return to cosmos overview"
+          aria-label="return to cosmos overview"
+        >
+          <Logomark size={26} />
+          <span className="font-display text-2xl text-cyan tracking-wide group-hover:text-glow transition-colors">
+            Ascertainty
+          </span>
+        </button>
+        <span className="pointer-events-none font-mono text-[10px] uppercase tracking-widest text-white/40 flex items-center gap-1">
           <span>atlas</span>
           <span className="text-white/20">›</span>
           <span className={bandLock ? "text-amber" : "text-cyan/70"}>
@@ -239,8 +266,14 @@ export default function AtlasPage() {
         <MinionLibrary
           refreshNonce={mintNonce}
           onMintClick={() => setMintOpen(true)}
+          onSelectPersona={setSelectedPersonaSlug}
         />
       )}
+
+      <PersonaDetailPanel
+        slug={selectedPersonaSlug}
+        onClose={() => setSelectedPersonaSlug(null)}
+      />
 
       <MintMinionDialog
         open={mintOpen}
@@ -253,6 +286,11 @@ export default function AtlasPage() {
       {overlayVisible && (
         <ASCertaintyOverlay onDismiss={() => setOverlayVisible(false)} />
       )}
+
+      {/* First-visit walkthrough — only shows once per browser. Fires
+          after the AS-CERTAIN-TY overlay so users see the brand intro
+          first, then a plain-language tour of the cosmos. */}
+      {!overlayVisible && <AtlasWalkthrough />}
     </main>
   );
 }
