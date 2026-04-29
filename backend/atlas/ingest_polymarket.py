@@ -33,32 +33,44 @@ TARGET_COUNT = 150  # active markets we want to keep cached
 REQUEST_TIMEOUT = 30.0
 
 
+GAMMA_MARKETS_URL = "https://gamma-api.polymarket.com/markets"
+
+
 async def fetch_markets() -> list[dict[str, Any]]:
-    """Walk the Polymarket cursor until we've collected ~200 active markets
-    or hit the end of the feed. Returns a list of raw market dicts."""
+    """Fetch active markets via Polymarket's Gamma API, which (unlike the
+    raw CLOB endpoint) returns only current/non-resolved markets and
+    supports volume-based sorting. Returns up to ~600 raw markets;
+    downstream code filters to TARGET_COUNT after normalization.
+
+    The Gamma response shape differs slightly from CLOB; both are handled
+    in `_normalize`."""
     out: list[dict[str, Any]] = []
-    cursor: Optional[str] = None
     async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
-        while len(out) < TARGET_COUNT * 2:  # walk a bit more than target
-            params: dict[str, Any] = {}
-            if cursor:
-                params["next_cursor"] = cursor
+        # Page through in 100-market chunks, ordered by volume desc
+        for offset in range(0, 600, 100):
+            params = {
+                "active": "true",
+                "closed": "false",
+                "archived": "false",
+                "limit": 100,
+                "offset": offset,
+                "order": "volumeNum",
+                "ascending": "false",
+            }
             try:
-                resp = await client.get(POLYMARKET_URL, params=params)
+                resp = await client.get(GAMMA_MARKETS_URL, params=params)
                 resp.raise_for_status()
             except httpx.HTTPError as e:
-                log.warning("polymarket: fetch failed: %s", e)
+                log.warning("polymarket(gamma): fetch failed at offset=%d: %s", offset, e)
                 break
-            payload = resp.json()
-            data = payload.get("data") or payload.get("markets") or []
-            if not data:
+            data = resp.json()
+            if not isinstance(data, list) or not data:
                 break
             out.extend(data)
-            cursor = payload.get("next_cursor")
-            if not cursor or cursor == "LTE=":
+            if len(data) < 100:
                 break
-            await asyncio.sleep(0.2)  # be polite
-    log.info("polymarket: fetched %d raw markets", len(out))
+            await asyncio.sleep(0.15)
+    log.info("polymarket(gamma): fetched %d raw markets", len(out))
     return out
 
 
@@ -81,37 +93,66 @@ def _category_from_question(q: str) -> str:
 
 
 def _normalize(raw: dict[str, Any]) -> Optional[dict[str, Any]]:
-    """Reduce a Polymarket market record to the schema the atlas needs.
-    Returns None if the market is missing required fields or is closed."""
-    if not raw.get("active") and raw.get("closed"):
+    """Reduce a Polymarket market record (Gamma or CLOB shape) to the
+    schema the atlas needs. Skips markets that are resolved, archived,
+    or have probability pinned at 0/1 (almost certainly resolved-but-
+    mislabelled)."""
+    if raw.get("closed") or raw.get("archived"):
         return None
-    market_id = raw.get("condition_id") or raw.get("market_slug") or raw.get("id")
-    question = raw.get("question") or ""
+    market_id = (
+        raw.get("conditionId")
+        or raw.get("condition_id")
+        or raw.get("slug")
+        or raw.get("id")
+    )
+    question = raw.get("question") or raw.get("title") or ""
     if not market_id or not question:
         return None
-    # Probability: take the first outcome's price (binary markets)
-    tokens = raw.get("tokens") or []
-    prob = None
-    if tokens:
+    # Probability: try outcomePrices (Gamma), tokens[0].price (CLOB)
+    prob: Optional[float] = None
+    op = raw.get("outcomePrices")
+    if isinstance(op, str):
+        # Gamma returns a JSON-encoded array string sometimes
         try:
-            prob = float(tokens[0].get("price", 0))
+            op = json.loads(op)
+        except (json.JSONDecodeError, TypeError):
+            op = None
+    if isinstance(op, list) and op:
+        try:
+            prob = float(op[0])
         except (TypeError, ValueError):
-            prob = None
+            pass
+    if prob is None:
+        tokens = raw.get("tokens") or []
+        if tokens:
+            try:
+                prob = float(tokens[0].get("price", 0))
+            except (TypeError, ValueError):
+                pass
     if prob is None:
         return None
+    # Skip pinned-resolved-or-uninteresting markets
+    if prob <= 0.005 or prob >= 0.995:
+        return None
     volume = 0.0
-    try:
-        volume = float(raw.get("volume_num") or raw.get("volume") or 0)
-    except (TypeError, ValueError):
-        pass
+    for k in ("volumeNum", "volume_num", "volume"):
+        try:
+            v = raw.get(k)
+            if v is not None:
+                volume = float(v)
+                break
+        except (TypeError, ValueError):
+            pass
+    if volume < 1000:  # filter dust markets
+        return None
     return {
         "market_id": str(market_id),
-        "slug": raw.get("market_slug") or "",
+        "slug": raw.get("slug") or raw.get("market_slug") or "",
         "question": question[:400],
         "probability": prob,
         "volume_usd": volume,
         "category": _category_from_question(question),
-        "end_date_iso": raw.get("end_date_iso") or "",
+        "end_date_iso": raw.get("endDate") or raw.get("end_date_iso") or "",
         "last_updated": int(time.time()),
     }
 
