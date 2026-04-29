@@ -5,7 +5,9 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 
 import { ASCertaintyOverlay } from "@/components/atlas/ASCertaintyOverlay";
+import { ModelSidePanel } from "@/components/atlas/SidePanel";
 import { type Region } from "@/lib/atlas/regions";
+import { type AtlasModel } from "@/lib/atlas/types";
 
 // deck.gl touches `window` on import, so the canvas is client-only.
 const CosmosCanvas = dynamic(
@@ -26,12 +28,21 @@ const CosmosCanvas = dynamic(
 export default function AtlasPage() {
   const [overlayVisible, setOverlayVisible] = useState(true);
   const [activeRegion, setActiveRegion] = useState<Region | null>(null);
+  const [selectedModel, setSelectedModel] = useState<AtlasModel | null>(null);
 
   return (
     <main className="fixed inset-0 bg-bg overflow-hidden">
       <div className="absolute inset-0">
-        <CosmosCanvas onActiveRegion={setActiveRegion} />
+        <CosmosCanvas
+          onActiveRegion={setActiveRegion}
+          onSelectModel={setSelectedModel}
+        />
       </div>
+
+      <ModelSidePanel
+        model={selectedModel}
+        onClose={() => setSelectedModel(null)}
+      />
 
       {/* HUD */}
       <div className="absolute top-4 left-6 z-30 flex items-center gap-3 pointer-events-none">
