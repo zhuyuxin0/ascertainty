@@ -10,7 +10,14 @@ import {
   Line,
   Html,
 } from "@react-three/drei";
-import { EffectComposer, Bloom, Vignette } from "@react-three/postprocessing";
+import {
+  EffectComposer,
+  Bloom,
+  Vignette,
+  ChromaticAberration,
+  Noise,
+} from "@react-three/postprocessing";
+import { BlendFunction } from "postprocessing";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 
@@ -203,6 +210,24 @@ export function CosmosScene(props: Props) {
       {/* The 6 region planets — dim/hide when band-locked to entity or
           detail (the user explicitly wanted exclusivity: only the locked
           layer's artefacts show, other layers fade out). */}
+      {/* Nebula atmosphere — soft volumetric haze around each live
+          region so the cosmos reads as *deep* not *geometric*. Three
+          nested additive spheres per region, gently rotating, color-
+          matched to the region's tint. Placeholder regions get a
+          dimmer, smaller version. */}
+      {REGIONS.map((r) => (
+        <RegionNebula
+          key={`neb-${r.id}`}
+          region={r}
+          dim={
+            props.bandLock === "entity" || props.bandLock === "detail"
+              ? 0.25
+              : 1
+          }
+          hidden={props.bandLock === "detail"}
+        />
+      ))}
+
       {REGIONS.map((r) => (
         <RegionPlanet
           key={r.id}
@@ -254,6 +279,13 @@ export function CosmosScene(props: Props) {
       {/* Wandering persona minions — Andy / Carl / Bea drift between regions */}
       <MinionCapsules onSelectPersona={props.onSelectPersona} />
 
+      {/* Scout minions — 2 per placeholder region, drifting in tight
+          orbits inside their region's halo. Reads as "frontier, dormant
+          but inhabited". Hidden when the user has band-locked deep in. */}
+      {props.bandLock !== "entity" && props.bandLock !== "detail" && (
+        <PlaceholderScouts />
+      )}
+
       {/* Camera distance → zoom band signaller, with optional clamp when locked. */}
       <CameraBandController
         bandLock={props.bandLock ?? null}
@@ -284,8 +316,11 @@ export function CosmosScene(props: Props) {
         makeDefault
       />
 
-      {/* Post-processing: tighter bloom (only true emitters bloom) +
-          deeper vignette for cinema-grade falloff toward edges. */}
+      {/* Post-processing stack — read order: bloom (emitters glow) →
+          chromatic aberration (subtle lens dispersion at edges) →
+          vignette (corner falloff) → film grain (noise). The grain in
+          particular is what lifts the look from "WebGL render" to
+          "filmed in a vacuum chamber". */}
       <EffectComposer>
         <Bloom
           intensity={1.15}
@@ -294,7 +329,18 @@ export function CosmosScene(props: Props) {
           radius={0.85}
           mipmapBlur
         />
+        <ChromaticAberration
+          blendFunction={BlendFunction.NORMAL}
+          offset={new THREE.Vector2(0.0012, 0.0012)}
+          radialModulation={false}
+          modulationOffset={0}
+        />
         <Vignette eskil={false} offset={0.22} darkness={0.72} />
+        <Noise
+          premultiply
+          blendFunction={BlendFunction.OVERLAY}
+          opacity={0.18}
+        />
       </EffectComposer>
     </Canvas>
   );
@@ -419,6 +465,95 @@ function RegionPlanet({
             : `${region.subtitle} · ${region.comingWhen ?? "coming"}`}
         </Text>
       </Billboard>
+    </group>
+  );
+}
+
+/** Soft nebula glow around a region. Three nested additive spheres with
+ *  decreasing opacity simulate volumetric haze without a real volumetric
+ *  shader. The largest sphere drifts slowly to produce ambient parallax;
+ *  the inner ones rotate more slowly so the haze feels alive but not
+ *  busy. Live regions get a brighter, larger nebula; placeholders get a
+ *  muted ash-colored one to read as "frontier, dormant". */
+function RegionNebula({
+  region,
+  dim = 1,
+  hidden = false,
+}: {
+  region: Region;
+  dim?: number;
+  hidden?: boolean;
+}) {
+  const groupRef = useRef<THREE.Group>(null);
+  const innerRef = useRef<THREE.Mesh>(null);
+
+  const color = useMemo(
+    () =>
+      new THREE.Color(
+        region.color[0] / 255,
+        region.color[1] / 255,
+        region.color[2] / 255,
+      ),
+    [region.color],
+  );
+
+  const isLive = region.status === "live";
+  const baseOpacity = isLive ? 0.07 : 0.03;
+  // Three layers: outer haze (4×r), mid bloom (2.4×r), tight glow (1.6×r).
+  // Each scales with the region's radius so big regions get bigger halos.
+  const radius = region.radius;
+
+  useFrame((state) => {
+    if (groupRef.current) {
+      // Slow group-axis rotation for ambient parallax
+      groupRef.current.rotation.z = state.clock.elapsedTime * 0.015;
+    }
+    if (innerRef.current) {
+      innerRef.current.rotation.y = state.clock.elapsedTime * 0.05;
+    }
+  });
+
+  if (hidden) return null;
+
+  return (
+    <group
+      ref={groupRef}
+      position={[region.position[0], region.position[1], region.z]}
+    >
+      {/* Outermost haze — large, very faint, additive. Reads as
+          "atmospheric pressure" around the region. */}
+      <mesh>
+        <sphereGeometry args={[radius * 4, 28, 20]} />
+        <meshBasicMaterial
+          color={color}
+          transparent
+          opacity={baseOpacity * 0.4 * dim}
+          depthWrite={false}
+          blending={THREE.AdditiveBlending}
+        />
+      </mesh>
+      {/* Mid bloom — the bulk of the visible glow */}
+      <mesh>
+        <sphereGeometry args={[radius * 2.4, 26, 18]} />
+        <meshBasicMaterial
+          color={color}
+          transparent
+          opacity={baseOpacity * 0.85 * dim}
+          depthWrite={false}
+          blending={THREE.AdditiveBlending}
+        />
+      </mesh>
+      {/* Inner tight glow — concentrates the color near the planet */}
+      <mesh ref={innerRef}>
+        <sphereGeometry args={[radius * 1.6, 22, 16]} />
+        <meshBasicMaterial
+          color={color}
+          transparent
+          opacity={baseOpacity * 1.4 * dim}
+          depthWrite={false}
+          blending={THREE.AdditiveBlending}
+        />
+      </mesh>
     </group>
   );
 }
@@ -1447,6 +1582,73 @@ type MinionPersona = {
   address: string | null;
   token_id: number | null;
 };
+
+/** Tiny scout minions inside each placeholder region — 2 per region,
+ *  drifting in slow circular orbits. They read as "frontier, dormant
+ *  but inhabited" without claiming the region is live. Color-tinted
+ *  by the region's color (which is ash for placeholders) and dimmed
+ *  to ~40% so they don't compete with live entities. */
+function PlaceholderScouts() {
+  const placeholders = useMemo(
+    () => REGIONS.filter((r) => r.status === "placeholder"),
+    [],
+  );
+  return (
+    <group>
+      {placeholders.flatMap((r) =>
+        [0, 1].map((i) => (
+          <PlaceholderScout
+            key={`${r.id}-${i}`}
+            region={r}
+            seed={r.id.charCodeAt(0) + i * 13}
+          />
+        )),
+      )}
+    </group>
+  );
+}
+
+function PlaceholderScout({
+  region,
+  seed,
+}: {
+  region: Region;
+  seed: number;
+}) {
+  const ref = useRef<THREE.Mesh>(null);
+  const orbitRadius = region.radius * 0.5 + (seed % 3) * 8;
+  const speed = 0.08 + (seed % 5) * 0.012;
+  const phase = seed * 0.31;
+
+  useFrame((state) => {
+    if (!ref.current) return;
+    const t = state.clock.elapsedTime;
+    ref.current.position.x =
+      region.position[0] + orbitRadius * Math.cos(t * speed + phase);
+    ref.current.position.y =
+      region.position[1] +
+      orbitRadius * Math.sin(t * speed + phase) +
+      Math.sin(t * 1.6 + phase) * 1.2;
+    ref.current.position.z = region.z + Math.sin(t * 0.4 + phase) * 6;
+  });
+
+  // Cool steel for the scouts — placeholder regions are ash, so a
+  // slightly brighter steel reads as "I'm here but I'm not the show".
+  const color = useMemo(() => new THREE.Color("#8FA1BA"), []);
+
+  return (
+    <mesh ref={ref}>
+      <sphereGeometry args={[2.2, 8, 8]} />
+      <meshBasicMaterial
+        color={color}
+        transparent
+        opacity={0.55}
+        blending={THREE.AdditiveBlending}
+        depthWrite={false}
+      />
+    </mesh>
+  );
+}
 
 /** Lazily fetched persona roster. The 3 minted iNFTs (Andy/Carl/Bea)
  *  appear as capsule minions wandering between regions. Each capsule

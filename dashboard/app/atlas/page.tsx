@@ -117,48 +117,53 @@ export default function AtlasPage() {
         onClose={() => setSelectedMarket(null)}
       />
 
-      {/* HUD: brand + breadcrumb. The wordmark+logomark is the "home"
-          affordance — clicking flies the camera back to the cosmos
-          overview and clears any selection / band-lock. */}
-      <div className="absolute top-4 left-6 z-30 flex items-center gap-3">
+      {/* HUD: brand + breadcrumb. Wordmark + logomark is the "home"
+          affordance. Breadcrumb uses ⟫ as a thin chevron for a more
+          deliberate typographic feel than ›, with subtle color tiering
+          (white/20 for stems, accent-tinted for the deepest segment). */}
+      <div className="absolute top-4 left-6 z-30 flex items-center gap-4">
         <button
           type="button"
           onClick={resetView}
-          className="pointer-events-auto flex items-center gap-2 group"
+          className="pointer-events-auto flex items-center gap-2.5 group"
           title="return to cosmos overview"
           aria-label="return to cosmos overview"
         >
-          <Logomark size={26} />
-          <span className="font-display text-2xl text-cyan tracking-wide group-hover:text-glow transition-colors">
+          <Logomark size={28} />
+          <span className="font-display text-[26px] leading-none text-cyan tracking-[0.01em] group-hover:text-glow transition-colors">
             Ascertainty
           </span>
         </button>
-        <span className="pointer-events-none font-mono text-[10px] uppercase tracking-widest text-white/40 flex items-center gap-1">
-          <span>atlas</span>
-          <span className="text-white/20">›</span>
-          <span className={bandLock ? "text-amber" : "text-cyan/70"}>
+        <span className="pointer-events-none font-mono text-[10px] uppercase tracking-[0.18em] text-white/45 flex items-baseline gap-1.5 leading-none mt-1.5">
+          <span className="text-white/35">atlas</span>
+          <span className="text-white/15">⟫</span>
+          <span className={bandLock ? "text-amber" : "text-cyan/75"}>
             {displayBand}
           </span>
           {bandLock && (
-            <span className="text-amber font-bold ml-1">🔒</span>
+            <span className="text-amber font-bold ml-0.5 text-[9px]">
+              ◉
+            </span>
           )}
           {activeRegion && (
             <>
-              <span className="text-white/20">›</span>
-              <span style={{ color: `rgb(${activeRegion.color.join(",")})` }}>
+              <span className="text-white/15">⟫</span>
+              <span
+                style={{ color: `rgb(${activeRegion.color.join(",")})` }}
+              >
                 {activeRegion.name}
               </span>
             </>
           )}
           {selectedModel && (
             <>
-              <span className="text-white/20">›</span>
+              <span className="text-white/15">⟫</span>
               <span className="text-cyan">{selectedModel.name}</span>
             </>
           )}
           {selectedMarket && !selectedModel && (
             <>
-              <span className="text-white/20">›</span>
+              <span className="text-white/15">⟫</span>
               <span className="text-amber">
                 {selectedMarket.question.slice(0, 30)}
                 {selectedMarket.question.length > 30 ? "…" : ""}
@@ -207,9 +212,11 @@ export default function AtlasPage() {
         <span className="ml-2"><ConnectButton /></span>
       </div>
 
-      {/* Band-lock toggle: top center */}
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 pointer-events-auto flex items-center gap-2 border border-line bg-bg/70 backdrop-blur px-2 py-1">
-        <span className="font-mono text-[9px] uppercase tracking-widest text-white/40 px-2">
+      {/* Band-lock toggle — top center. Each band is rendered with a
+          tiny indicator dot under the active band so the user has a
+          stable "you are here" mark even when no band is locked. */}
+      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 pointer-events-auto flex items-center gap-1 border border-line bg-bg/75 backdrop-blur px-2 py-1.5 shadow-[0_8px_32px_-8px_rgba(0,212,170,0.2)]">
+        <span className="font-mono text-[9px] uppercase tracking-[0.25em] text-white/40 px-2">
           band
         </span>
         {(["cosmos", "domain", "entity", "detail"] as const).map((b) => {
@@ -220,9 +227,9 @@ export default function AtlasPage() {
               key={b}
               type="button"
               onClick={() => setBandLock(locked ? null : b)}
-              className={`font-mono text-[10px] uppercase tracking-widest px-2 py-1 transition-colors ${
+              className={`relative font-mono text-[10px] uppercase tracking-[0.18em] px-2.5 py-1 transition-all ${
                 locked
-                  ? "border border-cyan text-cyan bg-cyan/10"
+                  ? "border border-cyan text-cyan bg-cyan/10 shadow-[0_0_12px_-2px_rgba(0,212,170,0.5)]"
                   : active
                     ? "text-cyan/80 hover:text-cyan"
                     : "text-white/40 hover:text-white/70"
@@ -233,43 +240,82 @@ export default function AtlasPage() {
                   : `lock to ${b} (camera can pan freely without changing band)`
               }
             >
-              {locked ? "🔒 " : ""}
               {b}
+              {/* Tiny "you are here" indicator on the active (non-locked) band */}
+              {active && !locked && (
+                <span
+                  aria-hidden
+                  className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-cyan/80"
+                />
+              )}
             </button>
           );
         })}
       </div>
 
-      {/* Region status chip — bottom-right */}
+      {/* Region status chip — bottom-right. A 2px accent strip on the
+          left edge in the region's color ties the card to the planet
+          you're looking at. Live regions get a quietly pulsing dot. */}
       {activeRegion && (
-        <div className="absolute bottom-6 right-6 z-30 border border-line bg-bg/80 backdrop-blur p-3 pointer-events-none max-w-xs">
-          <div
-            className="font-mono text-[10px] uppercase tracking-widest mb-1"
-            style={{
-              color: activeRegion.status === "live" ? "#00d4aa" : "#888",
-            }}
-          >
-            {activeRegion.status === "live" ? "live region" : "placeholder"}
-          </div>
-          <div className="font-display text-xl text-white">
-            {activeRegion.name}
-          </div>
-          <div className="font-mono text-[10px] text-white/50 mt-1">
-            {activeRegion.subtitle}
-          </div>
-          {activeRegion.status === "placeholder" && (
-            <div className="font-mono text-[10px] text-white/40 mt-2">
-              {activeRegion.comingWhen}
+        <div
+          className="absolute bottom-6 right-6 z-30 border border-line bg-bg/85 backdrop-blur pointer-events-none max-w-xs flex"
+          style={{
+            boxShadow: `0 16px 48px -16px rgb(${activeRegion.color.join(",")})`,
+          }}
+        >
+          <span
+            aria-hidden
+            className="block w-[3px]"
+            style={{ background: `rgb(${activeRegion.color.join(",")})` }}
+          />
+          <div className="p-3 flex-1">
+            <div
+              className="font-mono text-[10px] uppercase tracking-[0.22em] mb-1 flex items-center gap-1.5"
+              style={{
+                color: activeRegion.status === "live" ? "#00d4aa" : "#7d8298",
+              }}
+            >
+              {activeRegion.status === "live" && (
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className="absolute inline-flex h-full w-full rounded-full bg-cyan animate-ping opacity-60" />
+                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-cyan" />
+                </span>
+              )}
+              {activeRegion.status === "live" ? "live region" : "placeholder"}
             </div>
-          )}
+            <div className="font-display text-[22px] text-white leading-tight">
+              {activeRegion.name}
+            </div>
+            <div className="font-mono text-[10px] text-white/55 mt-1 leading-relaxed">
+              {activeRegion.subtitle}
+            </div>
+            {activeRegion.status === "placeholder" && (
+              <div className="font-mono text-[10px] text-amber/70 mt-2 uppercase tracking-widest">
+                {activeRegion.comingWhen}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
-      {/* Interaction hint — bottom-left */}
-      <div className="absolute bottom-6 left-6 z-20 font-mono text-[9px] uppercase tracking-widest text-white/30 pointer-events-none leading-relaxed">
-        <div>drag · rotate</div>
-        <div>⌘ / ctrl + drag · pan</div>
-        <div>scroll · zoom</div>
+      {/* Interaction hint — bottom-left. Three tiny rows with a small
+          symbol column so the eye groups by symbol instead of stripe. */}
+      <div className="absolute bottom-6 left-6 z-20 font-mono text-[9px] uppercase tracking-[0.22em] text-white/35 pointer-events-none leading-[1.6]">
+        <div className="flex items-baseline gap-2">
+          <span className="text-white/50">drag</span>
+          <span className="text-white/20">·</span>
+          <span>rotate</span>
+        </div>
+        <div className="flex items-baseline gap-2">
+          <span className="text-white/50">⌘ / ctrl + drag</span>
+          <span className="text-white/20">·</span>
+          <span>pan</span>
+        </div>
+        <div className="flex items-baseline gap-2">
+          <span className="text-white/50">scroll</span>
+          <span className="text-white/20">·</span>
+          <span>zoom</span>
+        </div>
       </div>
 
       {/* Draw-region button — opens lasso for staking. Bottom-right above
@@ -279,10 +325,10 @@ export default function AtlasPage() {
         <button
           type="button"
           onClick={() => setLassoActive(true)}
-          className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 pointer-events-auto border border-cyan/60 bg-bg/80 backdrop-blur px-4 py-2 font-mono text-[10px] uppercase tracking-widest text-cyan hover:bg-cyan hover:text-bg transition-colors"
+          className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 pointer-events-auto border border-cyan/60 bg-bg/80 backdrop-blur px-4 py-2 font-mono text-[10px] uppercase tracking-[0.22em] text-cyan hover:bg-cyan hover:text-bg transition-all shadow-[0_8px_32px_-8px_rgba(0,212,170,0.4)] hover:shadow-[0_8px_32px_-4px_rgba(0,212,170,0.7)]"
           title="lasso a region of nodes to stake on"
         >
-          ⬚ draw region · stake
+          <span className="text-cyan/60 mr-2">⬚</span>draw region<span className="text-white/30 mx-2">·</span>stake
         </button>
       )}
 
