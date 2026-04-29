@@ -904,3 +904,34 @@ async def set_persona_wearing(slug: str, body: WearBadgesBody) -> dict[str, Any]
     return await _persona_payload(p, operator_address)
 
 
+# ---------- atlas (cosmos view backing data) ----------
+
+@app.get("/atlas/models")
+async def atlas_models_endpoint() -> dict[str, Any]:
+    rows = await db.atlas_models()
+    return {"models": rows, "count": len(rows)}
+
+
+@app.get("/atlas/markets")
+async def atlas_markets_endpoint() -> dict[str, Any]:
+    rows = await db.atlas_markets()
+    return {"markets": rows, "count": len(rows)}
+
+
+@app.get("/atlas/connections")
+async def atlas_connections_endpoint() -> dict[str, Any]:
+    rows = await db.atlas_connections()
+    return {"connections": rows, "count": len(rows)}
+
+
+@app.post("/atlas/refresh")
+async def atlas_refresh_endpoint() -> dict[str, Any]:
+    """Trigger a one-shot ingest. Idempotent. Models from the curated
+    snapshot, markets from Polymarket public CLOB. UMAP recomputed
+    after ingestion in a follow-up endpoint (not yet wired)."""
+    from backend.atlas import ingest_models, ingest_polymarket
+    n_models = await ingest_models.ingest_once()
+    n_markets = await ingest_polymarket.ingest_once()
+    return {"models": n_models, "markets": n_markets}
+
+

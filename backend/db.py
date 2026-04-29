@@ -131,6 +131,47 @@ CREATE TABLE IF NOT EXISTS cctp_messages (
 );
 CREATE INDEX IF NOT EXISTS idx_cctp_ts ON cctp_messages(ts DESC);
 CREATE INDEX IF NOT EXISTS idx_cctp_dst ON cctp_messages(destination_domain);
+
+-- Atlas tables (cosmos view backing data)
+CREATE TABLE IF NOT EXISTS atlas_models (
+    model_id           TEXT PRIMARY KEY,
+    name               TEXT NOT NULL,
+    provider           TEXT NOT NULL,
+    family             TEXT NOT NULL,
+    mmlu               REAL,
+    gpqa               REAL,
+    humaneval          REAL,
+    math               REAL,
+    arc                REAL,
+    aggregate          REAL NOT NULL DEFAULT 0,
+    last_updated_unix  INTEGER NOT NULL,
+    price_input_mtok   REAL,
+    price_output_mtok  REAL,
+    source_url         TEXT,
+    layout_x           REAL,
+    layout_y           REAL
+);
+CREATE INDEX IF NOT EXISTS idx_atlas_models_provider ON atlas_models(provider);
+
+CREATE TABLE IF NOT EXISTS atlas_markets (
+    market_id          TEXT PRIMARY KEY,
+    slug               TEXT,
+    question           TEXT NOT NULL,
+    probability        REAL NOT NULL,
+    volume_usd         REAL NOT NULL DEFAULT 0,
+    category           TEXT NOT NULL,
+    end_date_iso       TEXT,
+    last_updated       INTEGER NOT NULL,
+    layout_x           REAL,
+    layout_y           REAL
+);
+CREATE INDEX IF NOT EXISTS idx_atlas_markets_category ON atlas_markets(category);
+
+CREATE TABLE IF NOT EXISTS atlas_connections (
+    market_id          TEXT NOT NULL,
+    model_id           TEXT NOT NULL,
+    PRIMARY KEY (market_id, model_id)
+);
 """
 
 
@@ -612,3 +653,90 @@ async def insert_classification(
             return cur.lastrowid
         except aiosqlite.IntegrityError:
             return None
+
+
+# ---------- atlas (cosmos backing data) ----------
+
+async def atlas_replace_models(rows: list[dict]) -> None:
+    """Wipe + re-insert the model snapshot. Cheap because the dataset is
+    small (~50 rows). Layout columns (x, y) are preserved across refresh
+    so we don't recompute UMAP unless an embed task explicitly requests."""
+    async with _conn() as db:
+        await db.execute("DELETE FROM atlas_models")
+        await db.executemany(
+            """INSERT INTO atlas_models (model_id, name, provider, family,
+                                          mmlu, gpqa, humaneval, math, arc,
+                                          aggregate, last_updated_unix,
+                                          price_input_mtok, price_output_mtok,
+                                          source_url)
+               VALUES (:model_id, :name, :provider, :family,
+                       :mmlu, :gpqa, :humaneval, :math, :arc,
+                       :aggregate, :last_updated_unix,
+                       :price_input_mtok, :price_output_mtok, :source_url)""",
+            rows,
+        )
+        await db.commit()
+
+
+async def atlas_replace_markets(rows: list[dict]) -> None:
+    async with _conn() as db:
+        await db.execute("DELETE FROM atlas_markets")
+        await db.executemany(
+            """INSERT INTO atlas_markets (market_id, slug, question, probability,
+                                           volume_usd, category, end_date_iso,
+                                           last_updated)
+               VALUES (:market_id, :slug, :question, :probability,
+                       :volume_usd, :category, :end_date_iso, :last_updated)""",
+            rows,
+        )
+        await db.commit()
+
+
+async def atlas_set_model_layout(layout: dict[str, tuple[float, float]]) -> None:
+    """Bulk-update layout_x / layout_y for models. Pass {model_id: (x, y)}."""
+    async with _conn() as db:
+        await db.executemany(
+            "UPDATE atlas_models SET layout_x = ?, layout_y = ? WHERE model_id = ?",
+            [(x, y, mid) for mid, (x, y) in layout.items()],
+        )
+        await db.commit()
+
+
+async def atlas_set_market_layout(layout: dict[str, tuple[float, float]]) -> None:
+    async with _conn() as db:
+        await db.executemany(
+            "UPDATE atlas_markets SET layout_x = ?, layout_y = ? WHERE market_id = ?",
+            [(x, y, mid) for mid, (x, y) in layout.items()],
+        )
+        await db.commit()
+
+
+async def atlas_models() -> list[dict]:
+    async with _conn() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM atlas_models") as cur:
+            return [dict(r) for r in await cur.fetchall()]
+
+
+async def atlas_markets() -> list[dict]:
+    async with _conn() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM atlas_markets") as cur:
+            return [dict(r) for r in await cur.fetchall()]
+
+
+async def atlas_replace_connections(pairs: list[tuple[str, str]]) -> None:
+    async with _conn() as db:
+        await db.execute("DELETE FROM atlas_connections")
+        await db.executemany(
+            "INSERT OR IGNORE INTO atlas_connections (market_id, model_id) VALUES (?, ?)",
+            pairs,
+        )
+        await db.commit()
+
+
+async def atlas_connections() -> list[dict]:
+    async with _conn() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM atlas_connections") as cur:
+            return [dict(r) for r in await cur.fetchall()]
