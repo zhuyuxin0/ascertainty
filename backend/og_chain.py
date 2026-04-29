@@ -269,6 +269,70 @@ AGENT_NFT_ABI: list[dict[str, Any]] = [
 ]
 
 
+MINION_NFT_ABI: list[dict[str, Any]] = [
+    {
+        "type": "function",
+        "name": "balanceOf",
+        "stateMutability": "view",
+        "inputs": [{"name": "owner", "type": "address"}],
+        "outputs": [{"name": "", "type": "uint256"}],
+    },
+    {
+        "type": "function",
+        "name": "tokenOfOwnerByIndex",
+        "stateMutability": "view",
+        "inputs": [
+            {"name": "owner", "type": "address"},
+            {"name": "index", "type": "uint256"},
+        ],
+        "outputs": [{"name": "", "type": "uint256"}],
+    },
+    {
+        "type": "function",
+        "name": "getMinion",
+        "stateMutability": "view",
+        "inputs": [{"name": "tokenId", "type": "uint256"}],
+        "outputs": [
+            {"name": "owner", "type": "address"},
+            {"name": "role", "type": "uint8"},
+            {"name": "domain", "type": "string"},
+            {"name": "seed", "type": "uint64"},
+            {"name": "mintedAt", "type": "uint64"},
+            {"name": "minter", "type": "address"},
+        ],
+    },
+    {
+        "type": "function",
+        "name": "totalSupply",
+        "stateMutability": "view",
+        "inputs": [],
+        "outputs": [{"name": "", "type": "uint256"}],
+    },
+    {
+        "type": "function",
+        "name": "mint",
+        "stateMutability": "nonpayable",
+        "inputs": [
+            {"name": "role_", "type": "uint8"},
+            {"name": "domain", "type": "string"},
+        ],
+        "outputs": [{"name": "tokenId", "type": "uint256"}],
+    },
+    {
+        "type": "event",
+        "name": "MinionMinted",
+        "inputs": [
+            {"name": "tokenId", "type": "uint256", "indexed": True},
+            {"name": "owner", "type": "address", "indexed": True},
+            {"name": "role", "type": "uint8", "indexed": False},
+            {"name": "domain", "type": "string", "indexed": False},
+            {"name": "seed", "type": "uint64", "indexed": False},
+        ],
+        "anonymous": False,
+    },
+]
+
+
 # ---------- module state ----------
 
 _w3: Optional[AsyncWeb3] = None
@@ -331,3 +395,7 @@ def get_registry() -> AsyncContract:
 
 def get_agent_nft() -> AsyncContract:
     return _contract("AgentNFT", AGENT_NFT_ABI)
+
+
+def get_minion_nft() -> AsyncContract:
+    return _contract("MinionNFT", MINION_NFT_ABI)

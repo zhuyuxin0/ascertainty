@@ -6,6 +6,7 @@ import Link from "next/link";
 
 import { ASCertaintyOverlay } from "@/components/atlas/ASCertaintyOverlay";
 import { MinionLibrary } from "@/components/atlas/MinionLibrary";
+import { MintMinionDialog } from "@/components/atlas/MintMinionDialog";
 import { ModelSidePanel, MarketSidePanel } from "@/components/atlas/SidePanel";
 import { type Region } from "@/lib/atlas/regions";
 import { type AtlasModel, type AtlasMarket } from "@/lib/atlas/types";
@@ -34,6 +35,8 @@ export default function AtlasPage() {
   const [selectedMarket, setSelectedMarket] = useState<AtlasMarket | null>(null);
   const [bandLock, setBandLock] = useState<ZoomBand | null>(null);
   const [currentBand, setCurrentBand] = useState<ZoomBand>("cosmos");
+  const [mintOpen, setMintOpen] = useState(false);
+  const [mintNonce, setMintNonce] = useState(0);
 
   const displayBand = bandLock ?? currentBand;
 
@@ -64,13 +67,43 @@ export default function AtlasPage() {
         onClose={() => setSelectedMarket(null)}
       />
 
-      {/* HUD: brand + nav */}
+      {/* HUD: brand + breadcrumb */}
       <div className="absolute top-4 left-6 z-30 flex items-center gap-3 pointer-events-none">
         <span className="font-display text-2xl text-cyan tracking-wide">
           Ascertainty
         </span>
-        <span className="font-mono text-[10px] uppercase tracking-widest text-white/40">
-          atlas · {displayBand} {bandLock ? "· locked" : "view"}
+        <span className="font-mono text-[10px] uppercase tracking-widest text-white/40 flex items-center gap-1">
+          <span>atlas</span>
+          <span className="text-white/20">›</span>
+          <span className={bandLock ? "text-amber" : "text-cyan/70"}>
+            {displayBand}
+          </span>
+          {bandLock && (
+            <span className="text-amber font-bold ml-1">🔒</span>
+          )}
+          {activeRegion && (
+            <>
+              <span className="text-white/20">›</span>
+              <span style={{ color: `rgb(${activeRegion.color.join(",")})` }}>
+                {activeRegion.name}
+              </span>
+            </>
+          )}
+          {selectedModel && (
+            <>
+              <span className="text-white/20">›</span>
+              <span className="text-cyan">{selectedModel.name}</span>
+            </>
+          )}
+          {selectedMarket && !selectedModel && (
+            <>
+              <span className="text-white/20">›</span>
+              <span className="text-amber">
+                {selectedMarket.question.slice(0, 30)}
+                {selectedMarket.question.length > 30 ? "…" : ""}
+              </span>
+            </>
+          )}
         </span>
       </div>
 
@@ -160,7 +193,20 @@ export default function AtlasPage() {
         <div>scroll · zoom</div>
       </div>
 
-      {!overlayVisible && <MinionLibrary />}
+      {!overlayVisible && (
+        <MinionLibrary
+          refreshNonce={mintNonce}
+          onMintClick={() => setMintOpen(true)}
+        />
+      )}
+
+      <MintMinionDialog
+        open={mintOpen}
+        onClose={() => {
+          setMintOpen(false);
+          setMintNonce((n) => n + 1);
+        }}
+      />
 
       {overlayVisible && (
         <ASCertaintyOverlay onDismiss={() => setOverlayVisible(false)} />

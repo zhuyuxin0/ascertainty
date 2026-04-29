@@ -924,6 +924,39 @@ async def atlas_connections_endpoint() -> dict[str, Any]:
     return {"connections": rows, "count": len(rows)}
 
 
+@app.get("/atlas/minions/{address}")
+async def atlas_minions_for(address: str) -> dict[str, Any]:
+    """List minions owned by `address`. Reads ERC721Enumerable balanceOf +
+    tokenOfOwnerByIndex on MinionNFT, then calls getMinion for each
+    tokenId to fetch role/domain/seed. Lightweight — designed for the
+    library-drawer drilldown after a fresh mint."""
+    if not og_chain.is_configured():
+        raise HTTPException(status_code=503, detail="og_chain not configured")
+    try:
+        nft = og_chain.get_minion_nft()
+        bal = int(await nft.functions.balanceOf(
+            og_chain.AsyncWeb3.to_checksum_address(address)
+        ).call())
+        out: list[dict[str, Any]] = []
+        for i in range(bal):
+            token_id = int(await nft.functions.tokenOfOwnerByIndex(
+                og_chain.AsyncWeb3.to_checksum_address(address), i
+            ).call())
+            owner, role, domain, seed, minted_at, minter = await nft.functions.getMinion(token_id).call()
+            out.append({
+                "token_id": token_id,
+                "owner": owner,
+                "role": int(role),
+                "domain": domain,
+                "seed": str(seed),
+                "minted_at": int(minted_at),
+                "minter": minter,
+            })
+        return {"address": address, "count": len(out), "minions": out}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"chain read failed: {e}")
+
+
 @app.post("/atlas/refresh")
 async def atlas_refresh_endpoint() -> dict[str, Any]:
     """One-shot ingest + layout + connection rebuild. Idempotent.
