@@ -5,9 +5,9 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 
 import { ASCertaintyOverlay } from "@/components/atlas/ASCertaintyOverlay";
-import { ModelSidePanel } from "@/components/atlas/SidePanel";
+import { ModelSidePanel, MarketSidePanel } from "@/components/atlas/SidePanel";
 import { type Region } from "@/lib/atlas/regions";
-import { type AtlasModel } from "@/lib/atlas/types";
+import { type AtlasModel, type AtlasMarket } from "@/lib/atlas/types";
 import { type ZoomBand } from "@/lib/atlas/zoomLevels";
 
 // r3f Canvas needs window/document, so the 3D cosmos is client-only.
@@ -30,6 +30,7 @@ export default function AtlasPage() {
   const [overlayVisible, setOverlayVisible] = useState(true);
   const [activeRegion, setActiveRegion] = useState<Region | null>(null);
   const [selectedModel, setSelectedModel] = useState<AtlasModel | null>(null);
+  const [selectedMarket, setSelectedMarket] = useState<AtlasMarket | null>(null);
   const [bandLock, setBandLock] = useState<ZoomBand | null>(null);
   const [currentBand, setCurrentBand] = useState<ZoomBand>("cosmos");
 
@@ -40,7 +41,14 @@ export default function AtlasPage() {
       <div className="absolute inset-0">
         <CosmosScene
           onActiveRegion={setActiveRegion}
-          onSelectModel={setSelectedModel}
+          onSelectModel={(m) => {
+            setSelectedModel(m);
+            if (m) setSelectedMarket(null);
+          }}
+          onSelectMarket={(m) => {
+            setSelectedMarket(m);
+            if (m) setSelectedModel(null);
+          }}
           bandLock={bandLock}
           onBandChange={setCurrentBand}
         />
@@ -49,6 +57,10 @@ export default function AtlasPage() {
       <ModelSidePanel
         model={selectedModel}
         onClose={() => setSelectedModel(null)}
+      />
+      <MarketSidePanel
+        market={selectedMarket}
+        onClose={() => setSelectedMarket(null)}
       />
 
       {/* HUD: brand + nav */}
