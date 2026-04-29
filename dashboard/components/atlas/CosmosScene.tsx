@@ -41,6 +41,15 @@ type Props = {
   onBandChange?: (band: ZoomBand) => void;
 };
 
+/** Distance thresholds that map camera→origin distance to a band. Lower
+ *  distance = higher zoom = deeper band. */
+const BAND_DISTANCE: Record<ZoomBand, [number, number]> = {
+  cosmos: [1100, 4000],
+  domain: [600, 1100],
+  entity: [250, 600],
+  detail: [80, 250],
+};
+
 export function CosmosScene(props: Props) {
   const [models, setModels] = useState<AtlasModel[]>([]);
   const [markets, setMarkets] = useState<AtlasMarket[]>([]);
@@ -87,14 +96,19 @@ export function CosmosScene(props: Props) {
         />
       ))}
 
-      {/* AI Models entity nodes — only mounted when zoomed close enough */}
+      {/* AI Models entity nodes. Band lock overrides the distance gate so
+          the user can dolly the camera anywhere while keeping nodes mounted. */}
       <ModelNodes
         models={models}
         onClickModel={(m) => props.onSelectModel?.(m)}
+        bandLock={props.bandLock ?? null}
       />
 
-      {/* Camera distance → zoom band signaller */}
-      <CameraBandReporter onBandChange={props.onBandChange} />
+      {/* Camera distance → zoom band signaller, with optional clamp when locked. */}
+      <CameraBandController
+        bandLock={props.bandLock ?? null}
+        onBandChange={props.onBandChange}
+      />
 
       {/* Orbit controls — rotate, pan (cmd/ctrl-drag), dolly */}
       <OrbitControls
@@ -240,15 +254,26 @@ function RegionPlanet({ region, onClick }: { region: Region; onClick: () => void
 function ModelNodes({
   models,
   onClickModel,
+  bandLock,
 }: {
   models: AtlasModel[];
   onClickModel: (m: AtlasModel) => void;
+  bandLock: ZoomBand | null;
 }) {
   const { camera } = useThree();
   const [visible, setVisible] = useState(false);
 
-  // Only render when the camera is reasonably close to the AI Models region
+  // When the band is locked to entity or detail, force-mount the nodes
+  // regardless of camera distance. Otherwise gate by distance to AI Models.
   useFrame(() => {
+    if (bandLock === "entity" || bandLock === "detail") {
+      if (!visible) setVisible(true);
+      return;
+    }
+    if (bandLock === "cosmos" || bandLock === "domain") {
+      if (visible) setVisible(false);
+      return;
+    }
     const aiRegion = REGIONS.find((r) => r.id === "ai-models")!;
     const dx = camera.position.x - aiRegion.position[0];
     const dy = camera.position.y - aiRegion.position[1];
@@ -403,23 +428,64 @@ function computePhyllotaxisPositions(
   return out;
 }
 
-/** Reads the camera distance to origin every frame and emits a band update. */
-function CameraBandReporter({
+/** Reports the current band based on camera distance. When `bandLock` is
+ *  set, snaps the camera into the band's range on lock-in (so the user
+ *  immediately sees the right content) and clamps the distance so they
+ *  can rotate/pan freely without dollying out of the band. Scroll-zoom
+ *  still works *within* the band's range. */
+function CameraBandController({
+  bandLock,
   onBandChange,
 }: {
+  bandLock: ZoomBand | null;
   onBandChange?: (band: ZoomBand) => void;
 }) {
   const { camera } = useThree();
   const lastBand = useRef<ZoomBand | null>(null);
+  const lastLock = useRef<ZoomBand | null>(null);
+  const snapTarget = useRef<number | null>(null);
+
+  // When lock changes, queue a one-time camera distance snap to the
+  // middle of the new band's range. This is what makes the lock feel
+  // responsive — clicking 'entity' actually flies you to entity distance.
+  useEffect(() => {
+    if (bandLock !== lastLock.current) {
+      lastLock.current = bandLock;
+      if (bandLock) {
+        const [minD, maxD] = BAND_DISTANCE[bandLock];
+        snapTarget.current = (minD + maxD) / 2;
+      } else {
+        snapTarget.current = null;
+      }
+    }
+  }, [bandLock]);
 
   useFrame(() => {
-    if (!onBandChange) return;
-    const dist = camera.position.length();
-    // Map distance to a deck.gl-style zoom value, then to a band.
-    // dist 1500 → zoom -1.5 (cosmos);  dist 350 → zoom 4 (entity); etc.
+    let dist = camera.position.length();
+
+    // One-shot snap on lock change — eased over a few frames
+    if (snapTarget.current !== null) {
+      const target = snapTarget.current;
+      const next = dist + (target - dist) * 0.18;
+      const dir = camera.position.clone().normalize();
+      camera.position.copy(dir.multiplyScalar(next));
+      dist = next;
+      if (Math.abs(next - target) < 4) {
+        snapTarget.current = null;
+      }
+    } else if (bandLock) {
+      const [minD, maxD] = BAND_DISTANCE[bandLock];
+      if (dist < minD - 1 || dist > maxD + 1) {
+        const clamped = Math.max(minD, Math.min(maxD, dist));
+        const dir = camera.position.clone().normalize();
+        camera.position.copy(dir.multiplyScalar(clamped));
+        dist = clamped;
+      }
+    }
+
     const pseudoZoom = Math.log2(1500 / Math.max(dist, 1)) - 0.5;
-    const band = bandFromZoom(pseudoZoom);
-    if (band !== lastBand.current) {
+    const band = bandLock ?? bandFromZoom(pseudoZoom);
+    if (onBandChange && band !== lastBand.current) {
       lastBand.current = band;
       onBandChange(band);
     }

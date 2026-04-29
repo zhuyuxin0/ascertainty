@@ -57,12 +57,12 @@ export function ASCertaintyOverlay({ onDismiss }: { onDismiss: () => void }) {
   const [visible, setVisible] = useState(true);
   const [extIdx, setExtIdx] = useState(0);
 
-  // Auto-cycle the AS-extension every 3.5s. Pauses on hover so users can read.
+  // Auto-cycle the AS-extension every 1.8s. Pauses on hover so users can read.
   useEffect(() => {
     if (sHovered) return;
     const iv = window.setInterval(() => {
       setExtIdx((i) => (i + 1) % AS_EXTENSIONS.length);
-    }, 3500);
+    }, 1800);
     return () => window.clearInterval(iv);
   }, [sHovered]);
 
@@ -106,7 +106,13 @@ export function ASCertaintyOverlay({ onDismiss }: { onDismiss: () => void }) {
           aria-hidden={!visible}
         >
           <div className="flex flex-col items-center gap-12 select-none">
-            {/* The name */}
+            {/* The name. Color choreography:
+                  A      → white  (the "A" prefix article)
+                  S      → AMBER  (the contextual word — Stop / Studio …)
+                  CERTAIN→ cyan   (the substrate)
+                  TY     → white  ("to you")
+                The S extension renders ABOVE the S (vertically) so it
+                doesn't horizontally overlap CERTAIN. */}
             <div className="flex items-baseline gap-1 sm:gap-2">
               {LETTERS.map((ch, i) => {
                 const isS = i === S_INDEX;
@@ -114,6 +120,11 @@ export function ASCertaintyOverlay({ onDismiss }: { onDismiss: () => void }) {
                   i >= CERTAIN_RANGE[0] && i <= CERTAIN_RANGE[1];
                 const meaning = inCertain ? CERTAIN_MEANINGS[ch] : null;
                 const isHovered = hoveredIdx === i;
+
+                let colorClass = "text-white/85"; // A and TY
+                if (isS) colorClass = "text-amber";
+                else if (inCertain) colorClass = "text-cyan";
+
                 return (
                   <motion.span
                     key={i}
@@ -135,15 +146,15 @@ export function ASCertaintyOverlay({ onDismiss }: { onDismiss: () => void }) {
                       setHoveredIdx(null);
                       if (isS) setSHovered(false);
                     }}
-                    className={`relative font-display text-7xl sm:text-8xl md:text-9xl leading-none transition-colors ${
-                      inCertain || isS
-                        ? "text-cyan cursor-help"
-                        : "text-white/60"
-                    } ${isHovered ? "opacity-100" : ""}`}
+                    className={`relative font-display text-7xl sm:text-8xl md:text-9xl leading-none ${colorClass} ${
+                      inCertain || isS ? "cursor-help" : ""
+                    }`}
                     style={
                       inCertain || isS
                         ? {
-                            animation: `pulse 3s ease-in-out infinite`,
+                            animation: isS
+                              ? "pulseAmber 1.8s ease-in-out infinite"
+                              : "pulse 3s ease-in-out infinite",
                             animationDelay: `${i * 0.18}s`,
                           }
                         : undefined
@@ -151,21 +162,21 @@ export function ASCertaintyOverlay({ onDismiss }: { onDismiss: () => void }) {
                   >
                     {ch}
 
-                    {/* The S grows a small contextual extension that
-                        cycles. The base letter S of ASCERTAINTY stays;
-                        the extension is rendered AFTER the letter so the
-                        word reads "S(top)" / "S(tudio)" etc. */}
+                    {/* S extension: renders ABOVE the S as a small caption
+                        that cycles in vertical sync. Doesn't push C-E-R-T-A-I-N
+                        sideways. */}
                     {isS && (
                       <AnimatePresence mode="wait">
                         <motion.span
                           key={ext.tail}
-                          initial={{ opacity: 0, x: -10, filter: "blur(4px)" }}
-                          animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
-                          exit={{ opacity: 0, x: 6, filter: "blur(4px)" }}
-                          transition={{ duration: 0.55, ease: "easeOut" }}
-                          className="absolute left-full bottom-2 sm:bottom-3 ml-0.5 font-display text-2xl sm:text-3xl md:text-4xl text-cyan/90 leading-none pointer-events-none whitespace-nowrap"
-                          style={{ textShadow: "0 0 16px rgba(0, 212, 170, 0.4)" }}
+                          initial={{ opacity: 0, y: 14, filter: "blur(4px)" }}
+                          animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                          exit={{ opacity: 0, y: -14, filter: "blur(4px)" }}
+                          transition={{ duration: 0.4, ease: "easeOut" }}
+                          className="absolute left-1/2 -translate-x-1/2 -top-12 sm:-top-14 md:-top-16 font-display text-3xl sm:text-4xl md:text-5xl text-amber leading-none pointer-events-none whitespace-nowrap"
+                          style={{ textShadow: "0 0 18px rgba(255, 107, 53, 0.55)" }}
                         >
+                          <span className="opacity-50">s</span>
                           {ext.tail.toLowerCase()}
                         </motion.span>
                       </AnimatePresence>
@@ -192,9 +203,9 @@ export function ASCertaintyOverlay({ onDismiss }: { onDismiss: () => void }) {
                         initial={{ opacity: 0, y: 6 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0 }}
-                        className="absolute left-1/2 -translate-x-1/2 top-full mt-3 whitespace-nowrap font-mono text-[10px] uppercase tracking-widest text-cyan/80 pointer-events-none"
+                        className="absolute left-1/2 -translate-x-1/2 top-full mt-3 whitespace-nowrap font-mono text-[10px] uppercase tracking-widest text-amber pointer-events-none"
                       >
-                        <span className="block text-cyan">A {ext.word.toLowerCase()}</span>
+                        <span className="block text-amber">A {ext.word.toLowerCase()}</span>
                         <span className="block text-white/50 font-sans normal-case text-[11px] mt-1">
                           {ext.gloss}
                         </span>
@@ -217,8 +228,8 @@ export function ASCertaintyOverlay({ onDismiss }: { onDismiss: () => void }) {
               }}
               className="flex flex-col items-center gap-2 text-center"
             >
-              <p className="font-display text-xl sm:text-2xl text-white/85 italic tracking-wide">
-                A{" "}
+              <p className="font-display text-xl sm:text-2xl italic tracking-wide">
+                <span className="text-white/85 not-italic">A</span>{" "}
                 <AnimatePresence mode="wait">
                   <motion.span
                     key={ext.word}
@@ -226,14 +237,16 @@ export function ASCertaintyOverlay({ onDismiss }: { onDismiss: () => void }) {
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -4 }}
                     transition={{ duration: 0.4 }}
-                    className="text-cyan not-italic inline-block"
+                    className="text-amber not-italic inline-block"
                   >
                     {ext.word.toLowerCase()}
                   </motion.span>
                 </AnimatePresence>{" "}
-                of <span className="text-cyan not-italic">certain</span>{" "}
-                <span className="not-italic">to</span>{" "}
-                <span className="text-cyan not-italic">you</span>.
+                <span className="text-white/85 not-italic">of</span>{" "}
+                <span className="text-cyan not-italic">certain</span>{" "}
+                <span className="text-white/85 not-italic">to</span>{" "}
+                <span className="text-white/85 not-italic">you</span>
+                <span className="text-white/85 not-italic">.</span>
               </p>
               <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-white/40 mt-4">
                 information has depth · navigate it
@@ -266,6 +279,19 @@ export function ASCertaintyOverlay({ onDismiss }: { onDismiss: () => void }) {
               50% {
                 opacity: 1;
                 text-shadow: 0 0 30px rgba(0, 212, 170, 0.45);
+              }
+            }
+            @keyframes pulseAmber {
+              0%,
+              100% {
+                opacity: 0.92;
+                text-shadow: 0 0 22px rgba(255, 107, 53, 0.25);
+                transform: translateY(0);
+              }
+              50% {
+                opacity: 1;
+                text-shadow: 0 0 36px rgba(255, 107, 53, 0.6);
+                transform: translateY(-2px);
               }
             }
           `}</style>
