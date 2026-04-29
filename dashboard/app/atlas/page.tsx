@@ -14,6 +14,7 @@ import { MintMinionDialog } from "@/components/atlas/MintMinionDialog";
 import { ModelSidePanel, MarketSidePanel } from "@/components/atlas/SidePanel";
 import { PersonaDetailPanel } from "@/components/atlas/PersonaDetailPanel";
 import { RegionLasso } from "@/components/atlas/RegionLasso";
+import { ConnectButton } from "@/components/ConnectButton";
 import { type Region } from "@/lib/atlas/regions";
 import { type AtlasModel, type AtlasMarket } from "@/lib/atlas/types";
 import { type ZoomBand } from "@/lib/atlas/zoomLevels";
@@ -201,6 +202,9 @@ export default function AtlasPage() {
         >
           github
         </Link>
+        {/* Wallet — RainbowKit's connect modal. Lives in the HUD so it's
+            always one click away regardless of which panel is open. */}
+        <span className="ml-2"><ConnectButton /></span>
       </div>
 
       {/* Band-lock toggle: top center */}

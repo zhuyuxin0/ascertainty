@@ -11,6 +11,7 @@ import {
 import { decodeEventLog } from "viem";
 
 import { MinionCard } from "@/components/atlas/MinionCard";
+import { ConnectButton } from "@/components/ConnectButton";
 import { MINION_NFT_ABI, MINION_NFT_ADDRESS } from "@/lib/contracts";
 import { ROLE_LABELS } from "@/lib/atlas/minionGenerator";
 
@@ -166,8 +167,11 @@ export function MintMinionDialog({
             </div>
 
             {!isConnected && (
-              <div className="border border-amber/40 bg-amber/10 p-3 font-mono text-[11px] text-amber">
-                connect a wallet (top-right) to mint
+              <div className="border border-amber/40 bg-amber/10 p-3 flex items-center justify-between gap-3">
+                <span className="font-mono text-[11px] text-amber leading-snug">
+                  connect a wallet to mint your minion on 0G Galileo
+                </span>
+                <ConnectButton />
               </div>
             )}
 

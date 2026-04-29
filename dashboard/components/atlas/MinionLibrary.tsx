@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useAccount } from "wagmi";
 
 import { MinionCard } from "@/components/atlas/MinionCard";
+import { ConnectButton } from "@/components/ConnectButton";
 import { API_URL } from "@/lib/api";
 
 type Persona = {
@@ -140,9 +141,12 @@ export function MinionLibrary({
                   </button>
                 )}
                 {!isConnected && (
-                  <span className="font-mono text-[9px] uppercase tracking-widest text-white/40">
-                    connect wallet to mint
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-[9px] uppercase tracking-widest text-white/40">
+                      connect to mint
+                    </span>
+                    <ConnectButton />
+                  </div>
                 )}
                 <button
                   type="button"
