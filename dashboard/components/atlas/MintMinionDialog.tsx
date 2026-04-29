@@ -171,6 +171,20 @@ export function MintMinionDialog({
               </div>
             )}
 
+            {isConnected && (
+              <div className="font-mono text-[10px] text-white/40 leading-relaxed">
+                gas pays in 0G on Galileo testnet · need test tokens?{" "}
+                <a
+                  href="https://faucet.0g.ai"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-cyan hover:underline"
+                >
+                  faucet.0g.ai ↗
+                </a>
+              </div>
+            )}
+
             {phase !== "revealing" && (
               <>
                 {/* Role picker */}

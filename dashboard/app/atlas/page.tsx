@@ -8,6 +8,7 @@ import { ASCertaintyOverlay } from "@/components/atlas/ASCertaintyOverlay";
 import { MinionLibrary } from "@/components/atlas/MinionLibrary";
 import { MintMinionDialog } from "@/components/atlas/MintMinionDialog";
 import { ModelSidePanel, MarketSidePanel } from "@/components/atlas/SidePanel";
+import { RegionLasso } from "@/components/atlas/RegionLasso";
 import { type Region } from "@/lib/atlas/regions";
 import { type AtlasModel, type AtlasMarket } from "@/lib/atlas/types";
 import { type ZoomBand } from "@/lib/atlas/zoomLevels";
@@ -37,11 +38,33 @@ export default function AtlasPage() {
   const [currentBand, setCurrentBand] = useState<ZoomBand>("cosmos");
   const [mintOpen, setMintOpen] = useState(false);
   const [mintNonce, setMintNonce] = useState(0);
+  const [lassoActive, setLassoActive] = useState(false);
 
   const displayBand = bandLock ?? currentBand;
 
   return (
     <main className="fixed inset-0 bg-bg overflow-hidden">
+      {/* Desktop-only gate. The atlas is a 3D pan-rotate-zoom interface;
+          a phone tap-screen is the wrong instrument for it. */}
+      <div className="md:hidden absolute inset-0 z-50 grid place-items-center bg-bg p-8">
+        <div className="border border-line bg-bg/90 p-6 max-w-sm text-center">
+          <p className="font-display text-3xl text-cyan mb-3">Ascertainty Atlas</p>
+          <p className="font-mono text-[11px] uppercase tracking-widest text-white/60 mb-4">
+            best on desktop
+          </p>
+          <p className="font-mono text-[11px] text-white/50 leading-relaxed">
+            the cosmos uses rotate · pan · scroll-to-zoom on a 3D map. open this on
+            a desktop browser to navigate. a flat 2D fallback is on the roadmap.
+          </p>
+          <Link
+            href="/bounties"
+            className="inline-block mt-5 font-mono text-[10px] uppercase tracking-widest border border-cyan text-cyan px-4 py-2 hover:bg-cyan hover:text-bg transition-colors"
+          >
+            browse bounties →
+          </Link>
+        </div>
+      </div>
+
       <div className="absolute inset-0">
         <CosmosScene
           onActiveRegion={setActiveRegion}
@@ -192,6 +215,25 @@ export default function AtlasPage() {
         <div>⌘ / ctrl + drag · pan</div>
         <div>scroll · zoom</div>
       </div>
+
+      {/* Draw-region button — opens lasso for staking. Bottom-right above
+          any region status chip (which has bottom-6 right-6 too); we sit
+          higher so they don't collide. */}
+      {!lassoActive && (
+        <button
+          type="button"
+          onClick={() => setLassoActive(true)}
+          className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 pointer-events-auto border border-cyan/60 bg-bg/80 backdrop-blur px-4 py-2 font-mono text-[10px] uppercase tracking-widest text-cyan hover:bg-cyan hover:text-bg transition-colors"
+          title="lasso a region of nodes to stake on"
+        >
+          ⬚ draw region · stake
+        </button>
+      )}
+
+      <RegionLasso
+        active={lassoActive}
+        onDeactivate={() => setLassoActive(false)}
+      />
 
       {!overlayVisible && (
         <MinionLibrary

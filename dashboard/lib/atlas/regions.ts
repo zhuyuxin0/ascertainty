@@ -23,7 +23,7 @@ export type Region = {
 };
 
 export const REGIONS: Region[] = [
-  // Top-left: math
+  // Top-left: math — cold cyan (atmospheric, structural)
   {
     id: "math-proofs",
     name: "Math Proof Formalization",
@@ -31,10 +31,10 @@ export const REGIONS: Region[] = [
     position: [-380, 280],
     z: 40,
     radius: 130,
-    color: [0, 212, 170],
+    color: [125, 211, 247], // #7DD3F7 cold cyan
     status: "live",
   },
-  // Top-right: AI models — main hero region
+  // Top-right: AI models — verified-green (the hero region)
   {
     id: "ai-models",
     name: "AI Models",
@@ -42,10 +42,10 @@ export const REGIONS: Region[] = [
     position: [380, 280],
     z: 60,
     radius: 180,
-    color: [0, 212, 170],
+    color: [0, 212, 170], // #00D4AA verified-green
     status: "live",
   },
-  // Bottom-left: defi placeholder
+  // Bottom-left: defi placeholder — ash
   {
     id: "defi-security",
     name: "DeFi Security",
@@ -53,11 +53,11 @@ export const REGIONS: Region[] = [
     position: [-380, -280],
     z: -50,
     radius: 110,
-    color: [110, 110, 130],
+    color: [58, 63, 85], // #3A3F55 ash
     status: "placeholder",
     comingWhen: "Q3 2026",
   },
-  // Bottom-right: prediction markets
+  // Bottom-right: prediction markets — lavender (consensus, not certainty)
   {
     id: "prediction-markets",
     name: "Prediction Markets",
@@ -65,10 +65,10 @@ export const REGIONS: Region[] = [
     position: [380, -280],
     z: 50,
     radius: 160,
-    color: [0, 212, 170],
+    color: [199, 166, 255], // #C7A6FF lavender
     status: "live",
   },
-  // Center-bottom: engineering placeholder
+  // Center-bottom: engineering placeholder — ash
   {
     id: "engineering",
     name: "Engineering Simulations",
@@ -76,11 +76,11 @@ export const REGIONS: Region[] = [
     position: [0, -440],
     z: -70,
     radius: 100,
-    color: [110, 110, 130],
+    color: [58, 63, 85],
     status: "placeholder",
     comingWhen: "Q3 2026",
   },
-  // Center-top: scientific claims placeholder
+  // Center-top: scientific placeholder — ash
   {
     id: "scientific",
     name: "Scientific Claims",
@@ -88,7 +88,7 @@ export const REGIONS: Region[] = [
     position: [0, 460],
     z: -40,
     radius: 100,
-    color: [110, 110, 130],
+    color: [58, 63, 85],
     status: "placeholder",
     comingWhen: "Q4 2026",
   },

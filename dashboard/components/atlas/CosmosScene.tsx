@@ -64,10 +64,18 @@ const BAND_DISTANCE: Record<ZoomBand, [number, number]> = {
   detail: [80, 250],
 };
 
+type FlyTarget = {
+  x: number;
+  y: number;
+  z: number;
+  distance: number; // mid-band distance the camera should sit at
+};
+
 export function CosmosScene(props: Props) {
   const [models, setModels] = useState<AtlasModel[]>([]);
   const [markets, setMarkets] = useState<AtlasMarket[]>([]);
   const [bounties, setBounties] = useState<AtlasBounty[]>([]);
+  const [flyTarget, setFlyTarget] = useState<FlyTarget | null>(null);
 
   useEffect(() => {
     fetch(`${API_URL}/atlas/models`)
@@ -89,29 +97,55 @@ export function CosmosScene(props: Props) {
       shadows={false}
       dpr={[1, 2]}
       gl={{ antialias: true, alpha: false }}
-      camera={{ position: [0, 0, 1500], fov: 45, near: 1, far: 4000 }}
-      style={{ background: "#030305" }}
+      camera={{ position: [0, 0, 1500], fov: 38, near: 1, far: 4000 }}
+      style={{ background: "#04050A" }}
     >
-      {/* Ambient + key light: mostly the bloom does the heavy lift */}
-      <ambientLight intensity={0.35} />
-      <directionalLight position={[300, 500, 800]} intensity={0.4} />
+      {/* Volumetric fog gives the cosmos *air* — far regions desaturate
+          into the void instead of cardboard-cutting against the black.
+          Picked from art-director's atmosphere spec. */}
+      <fog attach="fog" args={["#04050A", 1200, 3600]} />
 
-      {/* Distant starfield */}
+      {/* Cool key light + warm rim. The two-light kit is what separates
+          the surfaces from blob-on-black; the rim lifts contour edges. */}
+      <ambientLight intensity={0.28} />
+      <directionalLight position={[300, 500, 800]} intensity={0.38} color="#9DB7FF" />
+      <directionalLight position={[-400, -200, 400]} intensity={0.12} color="#FF8B5C" />
+
+      {/* Distant starfield — smaller, slower, denser (per art-director).
+          High count + low factor reads as dust, not floaters. */}
       <Stars
         radius={2400}
-        depth={400}
-        count={2400}
-        factor={6}
+        depth={500}
+        count={4500}
+        factor={3.2}
         fade
-        speed={0.3}
+        speed={0.08}
       />
 
-      {/* The 6 region planets */}
+      {/* The 6 region planets — dim/hide when band-locked to entity or
+          detail (the user explicitly wanted exclusivity: only the locked
+          layer's artefacts show, other layers fade out). */}
       {REGIONS.map((r) => (
         <RegionPlanet
           key={r.id}
           region={r}
-          onClick={() => props.onActiveRegion?.(r)}
+          onClick={() => {
+            props.onActiveRegion?.(r);
+            // Fly the camera to a domain-band distance with the region
+            // dead-center. Distance 700 is the mid of the domain band.
+            setFlyTarget({
+              x: r.position[0],
+              y: r.position[1],
+              z: r.z,
+              distance: r.status === "live" ? 520 : 700,
+            });
+          }}
+          dim={
+            props.bandLock === "entity" || props.bandLock === "detail"
+              ? 0.18
+              : 1
+          }
+          hidden={props.bandLock === "detail"}
         />
       ))}
 
@@ -146,6 +180,10 @@ export function CosmosScene(props: Props) {
         onBandChange={props.onBandChange}
       />
 
+      {/* Region-click fly-to: 1.4s ease-in-out from current camera +
+          OrbitControls target to a position framing the clicked region. */}
+      <FlyToController target={flyTarget} onDone={() => setFlyTarget(null)} />
+
       {/* Orbit controls — rotate, pan (cmd/ctrl-drag), dolly */}
       <OrbitControls
         enableDamping
@@ -161,22 +199,34 @@ export function CosmosScene(props: Props) {
         makeDefault
       />
 
-      {/* Post-processing: subtle bloom + vignette */}
+      {/* Post-processing: tighter bloom (only true emitters bloom) +
+          deeper vignette for cinema-grade falloff toward edges. */}
       <EffectComposer>
         <Bloom
-          intensity={0.85}
-          luminanceThreshold={0.18}
-          luminanceSmoothing={0.5}
-          radius={0.7}
+          intensity={1.15}
+          luminanceThreshold={0.25}
+          luminanceSmoothing={0.55}
+          radius={0.85}
+          mipmapBlur
         />
-        <Vignette eskil={false} offset={0.18} darkness={0.55} />
+        <Vignette eskil={false} offset={0.22} darkness={0.72} />
       </EffectComposer>
     </Canvas>
   );
 }
 
 /** A single region: glowing icosahedron + halo + 3D billboard label. */
-function RegionPlanet({ region, onClick }: { region: Region; onClick: () => void }) {
+function RegionPlanet({
+  region,
+  onClick,
+  dim = 1,
+  hidden = false,
+}: {
+  region: Region;
+  onClick: () => void;
+  dim?: number;
+  hidden?: boolean;
+}) {
   const meshRef = useRef<THREE.Mesh>(null);
   const haloRef = useRef<THREE.Mesh>(null);
   const [hovered, setHovered] = useState(false);
@@ -192,34 +242,34 @@ function RegionPlanet({ region, onClick }: { region: Region; onClick: () => void
   );
 
   const isLive = region.status === "live";
-  const emissiveStrength = isLive ? 1.4 : 0.5;
+  // emissive cap dropped per art-director (was 1.4, now 0.9 for live)
+  // and modulated by `dim` so band-locked-elsewhere regions recede.
+  const emissiveStrength = (isLive ? 0.9 : 0.25) * dim;
   const baseScale = isLive ? 1 : 0.85;
 
+  // Strip the per-frame breathing loop (creative-director Move B). Keep
+  // only the very slow group-axis rotation for "the cosmos turns" feel,
+  // and a one-time hover scale step (no continuous wiggle).
   useFrame((state) => {
     const t = state.clock.elapsedTime;
     if (meshRef.current) {
-      // Slow rotate + breathing
-      meshRef.current.rotation.y = t * 0.06;
-      meshRef.current.rotation.x = Math.sin(t * 0.4) * 0.05;
-      const breathe = 1 + Math.sin(t * 0.8 + region.position[0] * 0.01) * 0.02;
-      meshRef.current.scale.setScalar(baseScale * (hovered ? 1.08 : 1) * breathe);
+      meshRef.current.rotation.y = t * 0.04; // slowed from 0.06
+      meshRef.current.scale.setScalar(baseScale * (hovered ? 1.08 : 1));
     }
-    if (haloRef.current) {
-      haloRef.current.scale.setScalar(
-        baseScale * (1.55 + Math.sin(t * 0.6 + region.position[1] * 0.01) * 0.04) * (hovered ? 1.1 : 1),
-      );
-    }
+    // halo no longer pulses every frame — fixed
   });
+
+  if (hidden) return null;
 
   return (
     <group position={[region.position[0], region.position[1], region.z]}>
       {/* Halo (additive bloom-friendly) */}
-      <mesh ref={haloRef}>
+      <mesh ref={haloRef} scale={baseScale * 1.55}>
         <sphereGeometry args={[region.radius, 24, 24]} />
         <meshBasicMaterial
           color={color}
           transparent
-          opacity={isLive ? 0.06 : 0.03}
+          opacity={(isLive ? 0.07 : 0.025) * dim}
           depthWrite={false}
           blending={THREE.AdditiveBlending}
         />
@@ -229,6 +279,7 @@ function RegionPlanet({ region, onClick }: { region: Region; onClick: () => void
       <mesh
         ref={meshRef}
         onPointerEnter={(e) => {
+          if (dim < 0.5) return;
           e.stopPropagation();
           setHovered(true);
           document.body.style.cursor = "pointer";
@@ -238,6 +289,7 @@ function RegionPlanet({ region, onClick }: { region: Region; onClick: () => void
           document.body.style.cursor = "";
         }}
         onClick={(e) => {
+          if (dim < 0.5) return;
           e.stopPropagation();
           onClick();
         }}
@@ -251,7 +303,7 @@ function RegionPlanet({ region, onClick }: { region: Region; onClick: () => void
           metalness={0.15}
           flatShading
           transparent
-          opacity={isLive ? 0.95 : 0.55}
+          opacity={(isLive ? 0.95 : 0.55) * dim}
         />
       </mesh>
 
@@ -259,21 +311,23 @@ function RegionPlanet({ region, onClick }: { region: Region; onClick: () => void
       <Billboard position={[0, region.radius + 30, 0]}>
         <Text
           fontSize={isLive ? 28 : 24}
-          color={isLive ? color : "#9aa"}
+          color={isLive ? color : new THREE.Color("#9aa")}
           anchorX="center"
           anchorY="bottom"
           outlineWidth={0.5}
           outlineColor="#030305"
-          letterSpacing={0.06}
+          letterSpacing={0.18}
+          fillOpacity={dim}
         >
           {region.name.toUpperCase()}
         </Text>
         <Text
           position={[0, -8, 0]}
           fontSize={11}
-          color={isLive ? "#cccccc" : "#777"}
+          color={isLive ? "#9aa0b5" : "#5c627a"}
           anchorX="center"
           anchorY="top"
+          fillOpacity={dim * 0.85}
         >
           {isLive
             ? region.subtitle
@@ -361,10 +415,13 @@ function ModelNode({
   const ref = useRef<THREE.Mesh>(null);
   const [hovered, setHovered] = useState(false);
 
-  useFrame((state) => {
+  // No per-frame breathing — only a one-shot hover scale. The vibe-coded
+  // "every node wiggles" tell is what made the cosmos feel synthetic.
+  useFrame(() => {
     if (ref.current) {
-      const t = state.clock.elapsedTime;
-      ref.current.scale.setScalar(hovered ? 1.4 : 1 + Math.sin(t * 1.5 + position[0]) * 0.04);
+      const target = hovered ? 1.35 : 1;
+      const cur = ref.current.scale.x;
+      ref.current.scale.setScalar(cur + (target - cur) * 0.18);
     }
   });
 
@@ -390,9 +447,9 @@ function ModelNode({
         <meshStandardMaterial
           color={color}
           emissive={color}
-          emissiveIntensity={1.2}
-          roughness={0.4}
-          metalness={0.2}
+          emissiveIntensity={0.9}
+          roughness={0.45}
+          metalness={0.18}
         />
       </mesh>
       {hovered && (
@@ -529,6 +586,83 @@ function CameraBandController({
   return null;
 }
 
+/** Eased camera glide. Lerps both `camera.position` and OrbitControls'
+ *  internal `target` so the clicked region ends up dead-center. The
+ *  destination camera position sits on the line origin→region, scaled
+ *  to the band-mid distance so we land in the right zoom band too. */
+function FlyToController({
+  target,
+  onDone,
+}: {
+  target: FlyTarget | null;
+  onDone: () => void;
+}) {
+  const { camera, controls } = useThree();
+  const startRef = useRef<{
+    camPos: THREE.Vector3;
+    ctrlTarget: THREE.Vector3;
+    t0: number;
+    finalCamPos: THREE.Vector3;
+    finalCtrlTarget: THREE.Vector3;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!target) {
+      startRef.current = null;
+      return;
+    }
+    const ctrls = controls as unknown as { target?: THREE.Vector3 } | null;
+    const ctrlTarget = ctrls?.target?.clone() ?? new THREE.Vector3();
+
+    // Where the camera should end up: along the line from the region
+    // outward toward the current camera direction, at `distance` units.
+    const regionPos = new THREE.Vector3(target.x, target.y, target.z);
+    const fromRegion = camera.position.clone().sub(regionPos);
+    const len = fromRegion.length();
+    const dir = len > 0.001 ? fromRegion.normalize() : new THREE.Vector3(0, 0, 1);
+    const finalCamPos = regionPos.clone().add(dir.multiplyScalar(target.distance));
+
+    startRef.current = {
+      camPos: camera.position.clone(),
+      ctrlTarget,
+      t0: performance.now(),
+      finalCamPos,
+      finalCtrlTarget: regionPos.clone(),
+    };
+  }, [target, camera, controls]);
+
+  useFrame(() => {
+    if (!startRef.current) return;
+    const DURATION = 1400;
+    const elapsed = performance.now() - startRef.current.t0;
+    const t = Math.min(1, elapsed / DURATION);
+    // ease-in-out cubic
+    const e = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+
+    camera.position.lerpVectors(
+      startRef.current.camPos,
+      startRef.current.finalCamPos,
+      e,
+    );
+
+    const ctrls = controls as unknown as { target?: THREE.Vector3 } | null;
+    if (ctrls?.target) {
+      ctrls.target.lerpVectors(
+        startRef.current.ctrlTarget,
+        startRef.current.finalCtrlTarget,
+        e,
+      );
+    }
+
+    if (t >= 1) {
+      startRef.current = null;
+      onDone();
+    }
+  });
+
+  return null;
+}
+
 /* ---------- Prediction Markets entity nodes ---------- */
 
 const CATEGORY_COLOR: Record<string, [number, number, number]> = {
@@ -626,11 +760,11 @@ function MarketNode({
   const ref = useRef<THREE.Mesh>(null);
   const [hovered, setHovered] = useState(false);
 
-  useFrame((state) => {
+  useFrame(() => {
     if (ref.current) {
-      const t = state.clock.elapsedTime;
-      const breathe = 1 + Math.sin(t * 1.2 + position[1] * 0.01) * 0.05;
-      ref.current.scale.setScalar(hovered ? 1.45 : breathe);
+      const target = hovered ? 1.4 : 1;
+      const cur = ref.current.scale.x;
+      ref.current.scale.setScalar(cur + (target - cur) * 0.18);
     }
   });
 
@@ -790,7 +924,12 @@ function MathProofsNodes({
             color={color}
             radius={radius}
             label={label}
+            status={b.status}
+            amount={b.amount_usdc}
+            difficulty={b.difficulty}
             erdos={b.erdos_class === 1}
+            settled={settled}
+            submitted={submitted}
             onClick={() => router.push(`/bounty/${b.id}`)}
           />
         );
@@ -804,30 +943,85 @@ function BountyNode({
   color,
   radius,
   label,
+  status,
+  amount,
+  difficulty,
   erdos,
+  settled,
+  submitted,
   onClick,
 }: {
   position: [number, number, number];
   color: THREE.Color;
   radius: number;
   label: string;
+  status: string;
+  amount: string;
+  difficulty: number | null;
   erdos: boolean;
+  settled: boolean;
+  submitted: boolean;
   onClick: () => void;
 }) {
   const ref = useRef<THREE.Mesh>(null);
+  const haloRef = useRef<THREE.Mesh>(null);
   const [hovered, setHovered] = useState(false);
 
+  // Slow geometric rotation only — the octahedron form *needs* a touch of
+  // turn to read as a 3D object, but no jelly scale. Hover lerps in.
+  // For 'submitted' (challenge window open) bounties, pulse a halo so
+  // the demo shot reads "this proof is being challenged right now".
   useFrame((state) => {
     if (ref.current) {
       const t = state.clock.elapsedTime;
-      ref.current.rotation.y = t * 0.4 + position[0] * 0.01;
-      ref.current.rotation.x = Math.sin(t * 0.6 + position[1] * 0.01) * 0.2;
-      ref.current.scale.setScalar(hovered ? 1.3 : 1);
+      ref.current.rotation.y = t * 0.18 + position[0] * 0.01;
+      const target = hovered ? 1.28 : 1;
+      const cur = ref.current.scale.x;
+      ref.current.scale.setScalar(cur + (target - cur) * 0.18);
+    }
+    if (haloRef.current && submitted) {
+      const t = state.clock.elapsedTime;
+      const pulse = 1 + Math.sin(t * 2.4) * 0.18;
+      haloRef.current.scale.setScalar(pulse);
+      const mat = haloRef.current.material as THREE.MeshBasicMaterial;
+      mat.opacity = 0.18 + Math.sin(t * 2.4) * 0.08;
     }
   });
 
+  const statusLabel =
+    status === "settled"
+      ? "settled ✓"
+      : status === "submitted"
+        ? "challenge window"
+        : status === "open"
+          ? "open"
+          : status;
+  const statusColor = settled ? "#00d4aa" : submitted ? "#ff6b35" : "#9aa0b5";
+  const usdcDisplay = (() => {
+    try {
+      const n = Number(amount) / 1e6;
+      if (n >= 1000) return `$${(n / 1000).toFixed(1)}K`;
+      return `$${n.toFixed(0)}`;
+    } catch {
+      return amount;
+    }
+  })();
+
   return (
     <group position={position}>
+      {/* Pulsing halo for "submitted" — challenge window is open */}
+      {submitted && (
+        <mesh ref={haloRef}>
+          <sphereGeometry args={[radius * 1.8, 16, 16]} />
+          <meshBasicMaterial
+            color={color}
+            transparent
+            opacity={0.2}
+            depthWrite={false}
+            blending={THREE.AdditiveBlending}
+          />
+        </mesh>
+      )}
       <mesh
         ref={ref}
         onPointerEnter={(e) => {
@@ -848,23 +1042,36 @@ function BountyNode({
         <meshStandardMaterial
           color={color}
           emissive={color}
-          emissiveIntensity={1.4}
-          roughness={0.3}
-          metalness={0.4}
+          emissiveIntensity={0.95}
+          roughness={0.35}
+          metalness={0.42}
           flatShading
         />
       </mesh>
       <Billboard position={[0, radius + 8, 0]}>
         <Text
-          fontSize={hovered ? 11 : 9}
+          fontSize={hovered ? 12 : 10}
           color={erdos ? "#ff6b35" : "#ffffff"}
           anchorX="center"
           anchorY="bottom"
-          outlineWidth={0.5}
-          outlineColor="#030305"
+          outlineWidth={0.6}
+          outlineColor="#04050A"
         >
           {erdos ? "✨ " : ""}
           {label}
+        </Text>
+        <Text
+          position={[0, -2, 0]}
+          fontSize={9}
+          color={statusColor}
+          anchorX="center"
+          anchorY="top"
+          letterSpacing={0.1}
+          outlineWidth={0.3}
+          outlineColor="#04050A"
+        >
+          {statusLabel} · {usdcDisplay}
+          {difficulty != null ? ` · diff ${difficulty}` : ""}
         </Text>
       </Billboard>
     </group>
@@ -946,18 +1153,64 @@ function CrossDomainArcs({
           points.push([x, y, z]);
         }
         return (
-          <Line
-            key={i}
-            points={points}
-            color={arc.color}
-            lineWidth={1.8}
-            transparent
-            opacity={0.55}
-            dashed={false}
-          />
+          <group key={i}>
+            <Line
+              points={points}
+              color={arc.color}
+              lineWidth={1.8}
+              transparent
+              opacity={0.45}
+              dashed={false}
+            />
+            {/* Three particles staggered along the arc — reads as "data
+                flowing", proves the connection isn't decorative. */}
+            <ArcParticle from={arc.from} mid={mid} to={arc.to} color={arc.color} phase={0} />
+            <ArcParticle from={arc.from} mid={mid} to={arc.to} color={arc.color} phase={0.33} />
+            <ArcParticle from={arc.from} mid={mid} to={arc.to} color={arc.color} phase={0.66} />
+          </group>
         );
       })}
     </group>
+  );
+}
+
+function ArcParticle({
+  from,
+  mid,
+  to,
+  color,
+  phase,
+}: {
+  from: [number, number, number];
+  mid: [number, number, number];
+  to: [number, number, number];
+  color: string;
+  phase: number;
+}) {
+  const ref = useRef<THREE.Mesh>(null);
+  useFrame((state) => {
+    if (!ref.current) return;
+    const t = ((state.clock.elapsedTime * 0.18 + phase) % 1);
+    const x = (1 - t) * (1 - t) * from[0] + 2 * (1 - t) * t * mid[0] + t * t * to[0];
+    const y = (1 - t) * (1 - t) * from[1] + 2 * (1 - t) * t * mid[1] + t * t * to[1];
+    const z = (1 - t) * (1 - t) * from[2] + 2 * (1 - t) * t * mid[2] + t * t * to[2];
+    ref.current.position.set(x, y, z);
+    // Fade in/out at endpoints so particle "births" and "dies" smoothly
+    const fade = Math.sin(t * Math.PI);
+    const mat = ref.current.material as THREE.MeshBasicMaterial;
+    mat.opacity = 0.85 * fade;
+  });
+  return (
+    <mesh ref={ref}>
+      <sphereGeometry args={[3.5, 12, 12]} />
+      <meshBasicMaterial
+        color={color}
+        transparent
+        opacity={0.85}
+        depthWrite={false}
+        blending={THREE.AdditiveBlending}
+      />
+    </mesh>
   );
 }
 
@@ -1008,16 +1261,17 @@ function MinionCapsule({ persona, index }: { persona: MinionPersona; index: numb
   useFrame((state) => {
     if (!ref.current) return;
     const t = state.clock.elapsedTime;
-    // Wide drift between regions (the cosmos is roughly ±500 units)
-    const x = Math.sin(t * 0.18 + seed) * 480;
-    const y = Math.cos(t * 0.13 + seed * 1.3) * 380;
-    const z = Math.sin(t * 0.21 + seed * 0.7) * 60 + 40;
-    // Idle bounce on top of drift
-    const bounce = Math.sin(t * 3 + seed) * 4;
+    // Slower Lissajous drift — the cosmos turns *slowly*. Bounce stays
+    // because these are characters; characters are allowed to bounce.
+    const x = Math.sin(t * 0.1 + seed) * 480;
+    const y = Math.cos(t * 0.075 + seed * 1.3) * 380;
+    const z = Math.sin(t * 0.12 + seed * 0.7) * 60 + 40;
+    const bounce = Math.sin(t * 2.2 + seed) * 3;
     ref.current.position.set(x, y + bounce, z);
-    // Gentle wobble
-    ref.current.rotation.z = Math.sin(t * 0.8 + seed) * 0.12;
-    ref.current.scale.setScalar(hovered ? 1.4 : 1);
+    ref.current.rotation.z = Math.sin(t * 0.5 + seed) * 0.08;
+    const target = hovered ? 1.4 : 1;
+    const cur = ref.current.scale.x;
+    ref.current.scale.setScalar(cur + (target - cur) * 0.18);
   });
 
   return (
