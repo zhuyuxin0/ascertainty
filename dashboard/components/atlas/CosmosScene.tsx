@@ -572,13 +572,16 @@ function MarketNodes({
 
   const positions = useMemo(() => computeMarketPositions(markets), [markets]);
 
-  if (!visible) return null;
-
-  // Cap the render to top 60 by volume so we don't drop FPS at entity zoom
+  // Cap the render to top 60 by volume so we don't drop FPS at entity zoom.
+  // MUST be declared before any early-return so React's hook order stays
+  // constant across renders (otherwise the `visible` flip throws a hook
+  // count mismatch at runtime).
   const top = useMemo(
     () => [...markets].sort((a, b) => b.volume_usd - a.volume_usd).slice(0, 60),
     [markets],
   );
+
+  if (!visible) return null;
 
   return (
     <group>
