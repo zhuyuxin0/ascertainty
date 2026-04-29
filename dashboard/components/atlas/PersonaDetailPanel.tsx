@@ -68,24 +68,27 @@ export function PersonaDetailPanel({
   return (
     <AnimatePresence>
       {slug && (
-        <motion.div
-          key="persona-panel"
-          initial={{ opacity: 0, y: 24, scale: 0.96 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: 12, scale: 0.97 }}
-          transition={{ type: "spring", damping: 26, stiffness: 240 }}
-          drag
-          dragMomentum={false}
-          dragConstraints={{ left: -800, right: 800, top: -300, bottom: 300 }}
-          dragElastic={0.04}
-          className="fixed top-1/2 left-1/2 z-40 pointer-events-auto cursor-grab active:cursor-grabbing"
-          style={{
-            // Staggered initial position keeps stacked panels visible
-            // without forcing one to fully cover another.
-            x: `calc(-50% + ${offsetX}px)`,
-            y: `calc(-50% + ${offsetY}px)`,
-          }}
+        // Centering wrapper at viewport center (zero-size). The motion
+        // child drags via real numeric x/y motion values — the previous
+        // version set `style.x` to a `calc(-50% + Xpx)` *string*, which
+        // framer-motion can't drive as a motion value, so drag silently
+        // refused to move. Centering via CSS transform on the wrapper
+        // separates concerns: wrapper centers, child drags from there.
+        <div
+          className="fixed top-1/2 left-1/2 z-40 -translate-x-1/2 -translate-y-1/2"
+          style={{ pointerEvents: "none" }}
         >
+          <motion.div
+            key="persona-panel"
+            initial={{ opacity: 0, x: offsetX, y: offsetY + 24, scale: 0.96 }}
+            animate={{ opacity: 1, x: offsetX, y: offsetY, scale: 1 }}
+            exit={{ opacity: 0, x: offsetX, y: offsetY + 12, scale: 0.97 }}
+            transition={{ type: "spring", damping: 26, stiffness: 240 }}
+            drag
+            dragMomentum={false}
+            dragElastic={0.04}
+            className="pointer-events-auto cursor-grab active:cursor-grabbing"
+          >
           <div
             className="border bg-panel/95 backdrop-blur w-[420px] max-w-[90vw] shadow-2xl"
             style={{
@@ -223,7 +226,8 @@ export function PersonaDetailPanel({
               </div>
             )}
           </div>
-        </motion.div>
+          </motion.div>
+        </div>
       )}
     </AnimatePresence>
   );

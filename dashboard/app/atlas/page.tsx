@@ -4,8 +4,10 @@ import { useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 
+import { AgentPanel } from "@/components/atlas/AgentPanel";
 import { ASCertaintyOverlay } from "@/components/atlas/ASCertaintyOverlay";
 import { AtlasWalkthrough } from "@/components/atlas/AtlasWalkthrough";
+import { BountiesPanel } from "@/components/atlas/BountiesPanel";
 import { Logomark } from "@/components/atlas/Logomark";
 import { MinionLibrary } from "@/components/atlas/MinionLibrary";
 import { MintMinionDialog } from "@/components/atlas/MintMinionDialog";
@@ -48,6 +50,8 @@ export default function AtlasPage() {
   const removePersona = (slug: string) =>
     setOpenPersonas((prev) => prev.filter((s) => s !== slug));
   const [resetNonce, setResetNonce] = useState(0);
+  const [bountiesOpen, setBountiesOpen] = useState(false);
+  const [agentOpen, setAgentOpen] = useState(false);
 
   const resetView = () => {
     setBandLock(null);
@@ -163,19 +167,34 @@ export default function AtlasPage() {
         </span>
       </div>
 
+      {/* Top-right HUD: agent + bounties open as in-place slide-over
+          panels so the cosmos stays alive behind. github stays as a
+          real link since it leaves the app anyway. */}
       <div className="absolute top-4 right-6 z-30 flex items-center gap-4 pointer-events-auto">
-        <Link
-          href="/agent"
-          className="font-mono text-[10px] uppercase tracking-widest text-white/50 hover:text-cyan"
+        <button
+          type="button"
+          onClick={() => {
+            setAgentOpen((v) => !v);
+            setBountiesOpen(false);
+          }}
+          className={`font-mono text-[10px] uppercase tracking-widest hover:text-cyan transition-colors ${
+            agentOpen ? "text-cyan" : "text-white/50"
+          }`}
         >
           agent
-        </Link>
-        <Link
-          href="/bounties"
-          className="font-mono text-[10px] uppercase tracking-widest text-white/50 hover:text-cyan"
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setBountiesOpen((v) => !v);
+            setAgentOpen(false);
+          }}
+          className={`font-mono text-[10px] uppercase tracking-widest hover:text-cyan transition-colors ${
+            bountiesOpen ? "text-cyan" : "text-white/50"
+          }`}
         >
           bounties
-        </Link>
+        </button>
         <Link
           href="https://github.com/zhuyuxin0/ascertainty"
           className="font-mono text-[10px] uppercase tracking-widest text-white/50 hover:text-cyan"
@@ -305,6 +324,18 @@ export default function AtlasPage() {
           after the AS-CERTAIN-TY overlay so users see the brand intro
           first, then a plain-language tour of the cosmos. */}
       {!overlayVisible && <AtlasWalkthrough />}
+
+      {/* In-place agent + bounties panels — replace the route jumps to
+          /agent and /bounties so the cosmos canvas stays alive. */}
+      <BountiesPanel open={bountiesOpen} onClose={() => setBountiesOpen(false)} />
+      <AgentPanel
+        open={agentOpen}
+        onClose={() => setAgentOpen(false)}
+        onSelectPersona={(slug) => {
+          addPersona(slug);
+          setAgentOpen(false);
+        }}
+      />
     </main>
   );
 }
