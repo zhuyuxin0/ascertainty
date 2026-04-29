@@ -243,7 +243,9 @@ export function ASCertaintyOverlay({ onDismiss }: { onDismiss: () => void }) {
                   </motion.span>
                 </AnimatePresence>{" "}
                 <span className="text-white/85 not-italic">of</span>{" "}
-                <span className="text-cyan not-italic">certain</span>{" "}
+                <span className="text-cyan not-italic font-semibold tracking-[0.2em]">
+                  CERTAIN
+                </span>{" "}
                 <span className="text-white/85 not-italic">to</span>{" "}
                 <span className="text-white/85 not-italic">you</span>
                 <span className="text-white/85 not-italic">.</span>

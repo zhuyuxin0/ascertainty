@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 
 import { ASCertaintyOverlay } from "@/components/atlas/ASCertaintyOverlay";
+import { MinionLibrary } from "@/components/atlas/MinionLibrary";
 import { ModelSidePanel, MarketSidePanel } from "@/components/atlas/SidePanel";
 import { type Region } from "@/lib/atlas/regions";
 import { type AtlasModel, type AtlasMarket } from "@/lib/atlas/types";
@@ -158,6 +159,8 @@ export default function AtlasPage() {
         <div>⌘ / ctrl + drag · pan</div>
         <div>scroll · zoom</div>
       </div>
+
+      {!overlayVisible && <MinionLibrary />}
 
       {overlayVisible && (
         <ASCertaintyOverlay onDismiss={() => setOverlayVisible(false)} />

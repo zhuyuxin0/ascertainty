@@ -137,6 +137,9 @@ export function CosmosScene(props: Props) {
           to AI models. Visual proof that the map IS one connected piece. */}
       <CrossDomainArcs models={models} markets={markets} />
 
+      {/* Wandering persona minions — Andy / Carl / Bea drift between regions */}
+      <MinionCapsules />
+
       {/* Camera distance → zoom band signaller, with optional clamp when locked. */}
       <CameraBandController
         bandLock={props.bandLock ?? null}
@@ -951,6 +954,152 @@ function CrossDomainArcs({
           />
         );
       })}
+    </group>
+  );
+}
+
+/* ---------- Wandering minion capsules ---------- */
+
+type MinionPersona = {
+  slug: string;
+  name: string;
+  color: string;
+  emoji: string;
+  address: string | null;
+  token_id: number | null;
+};
+
+/** Lazily fetched persona roster. The 3 minted iNFTs (Andy/Carl/Bea)
+ *  appear as capsule minions wandering between regions. Each capsule
+ *  bounces in idle and slowly drifts along a Lissajous curve so the
+ *  cosmos has *life* even when the user isn't interacting. */
+export function MinionCapsules() {
+  const [personas, setPersonas] = useState<MinionPersona[]>([]);
+
+  useEffect(() => {
+    fetch(`${API_URL}/agent/personas`)
+      .then((r) => r.json())
+      .then((d: { personas: MinionPersona[] }) => setPersonas(d.personas ?? []))
+      .catch(() => setPersonas([]));
+  }, []);
+
+  return (
+    <group>
+      {personas.map((p, i) => (
+        <MinionCapsule key={p.slug} persona={p} index={i} />
+      ))}
+    </group>
+  );
+}
+
+function MinionCapsule({ persona, index }: { persona: MinionPersona; index: number }) {
+  const ref = useRef<THREE.Group>(null);
+  const [hovered, setHovered] = useState(false);
+  const router = useRouter();
+
+  const color = useMemo(() => new THREE.Color(persona.color), [persona.color]);
+
+  // Each minion has its own Lissajous frequency seed for non-repeating drift
+  const seed = index * 1.7 + 0.3;
+
+  useFrame((state) => {
+    if (!ref.current) return;
+    const t = state.clock.elapsedTime;
+    // Wide drift between regions (the cosmos is roughly ±500 units)
+    const x = Math.sin(t * 0.18 + seed) * 480;
+    const y = Math.cos(t * 0.13 + seed * 1.3) * 380;
+    const z = Math.sin(t * 0.21 + seed * 0.7) * 60 + 40;
+    // Idle bounce on top of drift
+    const bounce = Math.sin(t * 3 + seed) * 4;
+    ref.current.position.set(x, y + bounce, z);
+    // Gentle wobble
+    ref.current.rotation.z = Math.sin(t * 0.8 + seed) * 0.12;
+    ref.current.scale.setScalar(hovered ? 1.4 : 1);
+  });
+
+  return (
+    <group
+      ref={ref}
+      onPointerEnter={(e) => {
+        e.stopPropagation();
+        setHovered(true);
+        document.body.style.cursor = "pointer";
+      }}
+      onPointerLeave={() => {
+        setHovered(false);
+        document.body.style.cursor = "";
+      }}
+      onClick={(e) => {
+        e.stopPropagation();
+        router.push("/agent");
+      }}
+    >
+      {/* The capsule body — cylinder + sphere caps for r142- compatibility */}
+      <mesh position={[0, 0, 0]}>
+        <cylinderGeometry args={[8, 8, 16, 16, 1, false]} />
+        <meshStandardMaterial
+          color={color}
+          emissive={color}
+          emissiveIntensity={1.4}
+          roughness={0.3}
+          metalness={0.5}
+        />
+      </mesh>
+      <mesh position={[0, 8, 0]}>
+        <sphereGeometry args={[8, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2]} />
+        <meshStandardMaterial
+          color={color}
+          emissive={color}
+          emissiveIntensity={1.4}
+          roughness={0.3}
+          metalness={0.5}
+        />
+      </mesh>
+      <mesh position={[0, -8, 0]} rotation={[Math.PI, 0, 0]}>
+        <sphereGeometry args={[8, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2]} />
+        <meshStandardMaterial
+          color={color}
+          emissive={color}
+          emissiveIntensity={1.4}
+          roughness={0.3}
+          metalness={0.5}
+        />
+      </mesh>
+
+      {/* Two small "eye" dots on the capsule front so it feels alive */}
+      <mesh position={[3.2, 4, 7.5]}>
+        <sphereGeometry args={[1.1, 8, 8]} />
+        <meshBasicMaterial color="#030305" />
+      </mesh>
+      <mesh position={[-3.2, 4, 7.5]}>
+        <sphereGeometry args={[1.1, 8, 8]} />
+        <meshBasicMaterial color="#030305" />
+      </mesh>
+
+      {/* Hover label */}
+      {hovered && (
+        <Billboard position={[0, 22, 0]}>
+          <Text
+            fontSize={11}
+            color={persona.color}
+            anchorX="center"
+            anchorY="bottom"
+            outlineWidth={0.5}
+            outlineColor="#030305"
+          >
+            {persona.emoji} {persona.name}
+          </Text>
+          <Text
+            position={[0, -3, 0]}
+            fontSize={8}
+            color="#aaa"
+            anchorX="center"
+            anchorY="top"
+          >
+            persona iNFT · click to inspect
+          </Text>
+        </Billboard>
+      )}
     </group>
   );
 }
