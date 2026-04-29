@@ -36,9 +36,15 @@ const EXPLORER = "https://chainscan-galileo.0g.ai";
 export function PersonaDetailPanel({
   slug,
   onClose,
+  offsetX = 0,
+  offsetY = 0,
 }: {
   slug: string | null;
   onClose: () => void;
+  /** Stagger offset (px) so multi-stacked panels don't spawn on top of
+   *  each other. The user can still drag any panel anywhere. */
+  offsetX?: number;
+  offsetY?: number;
 }) {
   const [persona, setPersona] = useState<Persona | null>(null);
   const [loading, setLoading] = useState(false);
@@ -73,7 +79,12 @@ export function PersonaDetailPanel({
           dragConstraints={{ left: -800, right: 800, top: -300, bottom: 300 }}
           dragElastic={0.04}
           className="fixed top-1/2 left-1/2 z-40 pointer-events-auto cursor-grab active:cursor-grabbing"
-          style={{ x: "-50%", y: "-50%" }}
+          style={{
+            // Staggered initial position keeps stacked panels visible
+            // without forcing one to fully cover another.
+            x: `calc(-50% + ${offsetX}px)`,
+            y: `calc(-50% + ${offsetY}px)`,
+          }}
         >
           <div
             className="border bg-panel/95 backdrop-blur w-[420px] max-w-[90vw] shadow-2xl"

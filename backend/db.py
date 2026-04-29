@@ -170,6 +170,13 @@ CREATE INDEX IF NOT EXISTS idx_atlas_markets_category ON atlas_markets(category)
 CREATE TABLE IF NOT EXISTS atlas_connections (
     market_id          TEXT NOT NULL,
     model_id           TEXT NOT NULL,
+    -- Match strength 0..1. 1.0 = direct named-model match in question
+    -- text; lower values indicate weaker (alias, generic AI) matches.
+    confidence         REAL NOT NULL DEFAULT 1.0,
+    -- Human-readable explanation of why the edge exists (the matched
+    -- substring, or a phrase like "generic AI mention"). Surfaced as a
+    -- hover tooltip on each arc so the connection is justified.
+    reason             TEXT,
     PRIMARY KEY (market_id, model_id)
 );
 """
@@ -216,6 +223,16 @@ async def init_db() -> None:
                 await db.execute(f"ALTER TABLE submissions ADD COLUMN {col} TEXT")
         if "kernel_duration_seconds" not in sub_cols:
             await db.execute("ALTER TABLE submissions ADD COLUMN kernel_duration_seconds REAL")
+        # Idempotent migration: enrich atlas_connections with confidence + reason
+        # so the cross-domain edges carry meaning, not just a (market, model) pair.
+        async with db.execute("PRAGMA table_info(atlas_connections)") as cur:
+            con_cols = {row[1] for row in await cur.fetchall()}
+        if "confidence" not in con_cols:
+            await db.execute(
+                "ALTER TABLE atlas_connections ADD COLUMN confidence REAL NOT NULL DEFAULT 1.0"
+            )
+        if "reason" not in con_cols:
+            await db.execute("ALTER TABLE atlas_connections ADD COLUMN reason TEXT")
         await db.commit()
 
 
@@ -725,12 +742,22 @@ async def atlas_markets() -> list[dict]:
             return [dict(r) for r in await cur.fetchall()]
 
 
-async def atlas_replace_connections(pairs: list[tuple[str, str]]) -> None:
+async def atlas_replace_connections(
+    rows: list[tuple[str, str, float, str]],
+) -> None:
+    """Replace the connections table.
+
+    Each row is (market_id, model_id, confidence, reason). Reason is the
+    human-readable matched substring (or "generic AI mention"); confidence
+    is in 0..1, with 1.0 meaning a direct named-model match.
+    """
     async with _conn() as db:
         await db.execute("DELETE FROM atlas_connections")
         await db.executemany(
-            "INSERT OR IGNORE INTO atlas_connections (market_id, model_id) VALUES (?, ?)",
-            pairs,
+            """INSERT OR IGNORE INTO atlas_connections
+               (market_id, model_id, confidence, reason)
+               VALUES (?, ?, ?, ?)""",
+            rows,
         )
         await db.commit()
 

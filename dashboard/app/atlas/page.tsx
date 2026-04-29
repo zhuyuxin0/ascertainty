@@ -42,14 +42,18 @@ export default function AtlasPage() {
   const [mintOpen, setMintOpen] = useState(false);
   const [mintNonce, setMintNonce] = useState(0);
   const [lassoActive, setLassoActive] = useState(false);
-  const [selectedPersonaSlug, setSelectedPersonaSlug] = useState<string | null>(null);
+  const [openPersonas, setOpenPersonas] = useState<string[]>([]);
+  const addPersona = (slug: string) =>
+    setOpenPersonas((prev) => (prev.includes(slug) ? prev : [...prev, slug]));
+  const removePersona = (slug: string) =>
+    setOpenPersonas((prev) => prev.filter((s) => s !== slug));
   const [resetNonce, setResetNonce] = useState(0);
 
   const resetView = () => {
     setBandLock(null);
     setSelectedModel(null);
     setSelectedMarket(null);
-    setSelectedPersonaSlug(null);
+    setOpenPersonas([]);
     setActiveRegion(null);
     setResetNonce((n) => n + 1);
   };
@@ -90,7 +94,9 @@ export default function AtlasPage() {
             setSelectedMarket(m);
             if (m) setSelectedModel(null);
           }}
-          onSelectPersona={setSelectedPersonaSlug}
+          onSelectPersona={addPersona}
+          selectedModelId={selectedModel?.model_id ?? null}
+          selectedMarketId={selectedMarket?.market_id ?? null}
           bandLock={bandLock}
           onBandChange={setCurrentBand}
           resetNonce={resetNonce}
@@ -266,14 +272,22 @@ export default function AtlasPage() {
         <MinionLibrary
           refreshNonce={mintNonce}
           onMintClick={() => setMintOpen(true)}
-          onSelectPersona={setSelectedPersonaSlug}
+          onSelectPersona={addPersona}
         />
       )}
 
-      <PersonaDetailPanel
-        slug={selectedPersonaSlug}
-        onClose={() => setSelectedPersonaSlug(null)}
-      />
+      {/* Multi-persona stack — open as many as you click; staggered
+          spawn position so they don't all land on top of each other.
+          Each panel is independently draggable + closeable. */}
+      {openPersonas.map((slug, idx) => (
+        <PersonaDetailPanel
+          key={slug}
+          slug={slug}
+          onClose={() => removePersona(slug)}
+          offsetX={idx * 36}
+          offsetY={idx * 36}
+        />
+      ))}
 
       <MintMinionDialog
         open={mintOpen}

@@ -8,6 +8,7 @@ import {
   Text,
   Stars,
   Line,
+  Html,
 } from "@react-three/drei";
 import { EffectComposer, Bloom, Vignette } from "@react-three/postprocessing";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -18,6 +19,11 @@ import { bandFromZoom, type ZoomBand } from "@/lib/atlas/zoomLevels";
 import type { AtlasModel, AtlasMarket } from "@/lib/atlas/types";
 import { providerColorRGB } from "@/lib/atlas/types";
 import { API_URL } from "@/lib/api";
+import {
+  setEntities,
+  setCameraAndViewport,
+  type EntityRecord,
+} from "@/lib/atlas/entityRegistry";
 
 /**
  * The 3D cosmos. Each region is a glowing icosahedron-blob floating at
@@ -41,6 +47,10 @@ type Props = {
   onSelectModel?: (m: AtlasModel | null) => void;
   onSelectMarket?: (m: AtlasMarket | null) => void;
   onSelectPersona?: (slug: string) => void;
+  /** When set, all *other* models dim heavily so the selection reads
+   *  as the focal point of the detail-band view. */
+  selectedModelId?: string | null;
+  selectedMarketId?: string | null;
   bandLock?: ZoomBand | null;
   onBandChange?: (band: ZoomBand) => void;
   /** Increment to trigger a fly-back to the default cosmos overview. */
@@ -91,6 +101,59 @@ export function CosmosScene(props: Props) {
     // behind the cosmos, the +z bias is preserved by their own orbit.
     // Worst case the camera flies along whatever direction it's at — fine.
   }, [props.resetNonce]);
+
+  // Build a global entity registry every time the source data lands.
+  // RegionLasso reads from this on commit so the StakeCard reflects
+  // *real* nodes inside the drawn shape (and is therefore deterministic
+  // across re-draws of the same area).
+  useEffect(() => {
+    const records: EntityRecord[] = [];
+    const modelPositions = computePhyllotaxisPositions(models);
+    for (const m of models) {
+      const p = modelPositions[m.model_id];
+      if (!p) continue;
+      records.push({
+        id: m.model_id,
+        kind: "model",
+        position: p,
+        score: m.aggregate,
+        direction: m.aggregate >= 70 ? 1 : 0,
+        data: m,
+      });
+    }
+    const marketPositions = computeMarketPositions(markets);
+    for (const m of markets) {
+      const p = marketPositions[m.market_id];
+      if (!p) continue;
+      records.push({
+        id: m.market_id,
+        kind: "market",
+        // Markets: |prob-0.5|*200 maps 50% → 0 (uncertain), 100% → 100 (certain)
+        position: p,
+        score: Math.abs(m.probability - 0.5) * 200,
+        direction: m.probability >= 0.5 ? 1 : -1,
+        data: m,
+      });
+    }
+    // Bounty ring layout — same formula as MathProofsNodes
+    const bRegion = REGIONS.find((r) => r.id === "math-proofs")!;
+    const bR = bRegion.radius * 0.6;
+    bounties.forEach((b, i) => {
+      const angle = (i / Math.max(1, bounties.length)) * Math.PI * 2 - Math.PI / 2;
+      const x = bRegion.position[0] + bR * Math.cos(angle);
+      const y = bRegion.position[1] + bR * Math.sin(angle);
+      const z = bRegion.z + 25;
+      records.push({
+        id: `bounty:${b.id}`,
+        kind: "bounty",
+        position: [x, y, z],
+        score: 30 + (b.difficulty ?? 5) * 7,
+        direction: 0,
+        data: b,
+      });
+    });
+    setEntities(records);
+  }, [models, markets, bounties]);
 
   useEffect(() => {
     fetch(`${API_URL}/atlas/models`)
@@ -170,6 +233,7 @@ export function CosmosScene(props: Props) {
         models={models}
         onClickModel={(m) => props.onSelectModel?.(m)}
         bandLock={props.bandLock ?? null}
+        selectedId={props.selectedModelId ?? null}
       />
 
       {/* Prediction Markets entity nodes */}
@@ -177,6 +241,7 @@ export function CosmosScene(props: Props) {
         markets={markets}
         onClickMarket={(m) => props.onSelectMarket?.(m)}
         bandLock={props.bandLock ?? null}
+        selectedId={props.selectedMarketId ?? null}
       />
 
       {/* Math Proofs nodes — deep-zoom into existing /bounty UI */}
@@ -198,6 +263,11 @@ export function CosmosScene(props: Props) {
       {/* Region-click fly-to: 1.4s ease-in-out from current camera +
           OrbitControls target to a position framing the clicked region. */}
       <FlyToController target={flyTarget} onDone={() => setFlyTarget(null)} />
+
+      {/* Push camera + viewport into the entity registry every frame so
+          the screen-space lasso can project entity 3D positions when it
+          commits a selection. */}
+      <CameraExporter />
 
       {/* Orbit controls — rotate, pan (cmd/ctrl-drag), dolly */}
       <OrbitControls
@@ -360,10 +430,12 @@ function ModelNodes({
   models,
   onClickModel,
   bandLock,
+  selectedId,
 }: {
   models: AtlasModel[];
   onClickModel: (m: AtlasModel) => void;
   bandLock: ZoomBand | null;
+  selectedId: string | null;
 }) {
   const { camera } = useThree();
   const [visible, setVisible] = useState(false);
@@ -399,6 +471,9 @@ function ModelNodes({
         const [r, g, b] = providerColorRGB(m.provider);
         const color = new THREE.Color(r / 255, g / 255, b / 255);
         const radius = 4 + 12 * Math.max(0, Math.min(1, (m.aggregate - 50) / 45));
+        // Detail-zoom focus: when a model is selected, dim all the
+        // others heavily so the focal node stands out from the cluster.
+        const dim = selectedId && selectedId !== m.model_id ? 0.18 : 1;
         return (
           <ModelNode
             key={m.model_id}
@@ -406,6 +481,7 @@ function ModelNodes({
             color={color}
             radius={radius}
             label={m.name}
+            dim={dim}
             onClick={() => onClickModel(m)}
           />
         );
@@ -419,12 +495,14 @@ function ModelNode({
   color,
   radius,
   label,
+  dim = 1,
   onClick,
 }: {
   position: [number, number, number];
   color: THREE.Color;
   radius: number;
   label: string;
+  dim?: number;
   onClick: () => void;
 }) {
   const ref = useRef<THREE.Mesh>(null);
@@ -445,6 +523,7 @@ function ModelNode({
       <mesh
         ref={ref}
         onPointerEnter={(e) => {
+          if (dim < 0.5) return;
           e.stopPropagation();
           setHovered(true);
           document.body.style.cursor = "pointer";
@@ -454,6 +533,7 @@ function ModelNode({
           document.body.style.cursor = "";
         }}
         onClick={(e) => {
+          if (dim < 0.5) return;
           e.stopPropagation();
           onClick();
         }}
@@ -462,12 +542,14 @@ function ModelNode({
         <meshStandardMaterial
           color={color}
           emissive={color}
-          emissiveIntensity={0.9}
+          emissiveIntensity={0.9 * dim}
           roughness={0.45}
           metalness={0.18}
+          transparent
+          opacity={Math.max(0.18, dim)}
         />
       </mesh>
-      {hovered && (
+      {hovered && dim > 0.5 && (
         <Billboard position={[0, radius + 8, 0]}>
           <Text fontSize={11} color="#ffffff" anchorX="center" anchorY="bottom">
             {label}
@@ -520,7 +602,7 @@ function computePhyllotaxisPositions(
 
     group.forEach((m, i) => {
       // Phyllotaxis: r = c * sqrt(i+1), angle offset within sector
-      const c = R * 0.18; // spiral spacing
+      const c = R * 0.26; // wider spiral spacing — less overlap at detail zoom
       const r = c * Math.sqrt(i + 1);
       // Rotate by golden angle but keep within ±sector/3 of sector center
       const localAngle = (i * PHI) % (sectorAngle * 0.55) - sectorAngle * 0.275;
@@ -597,6 +679,17 @@ function CameraBandController({
       lastBand.current = band;
       onBandChange(band);
     }
+  });
+  return null;
+}
+
+/** Pushes the live camera + canvas dimensions into the singleton
+ *  entity registry every frame. RegionLasso reads this on commit to
+ *  project entity 3D positions to screen-space and run point-in-shape. */
+function CameraExporter() {
+  const { camera, size } = useThree();
+  useFrame(() => {
+    setCameraAndViewport(camera, size.width, size.height);
   });
   return null;
 }
@@ -694,10 +787,12 @@ function MarketNodes({
   markets,
   onClickMarket,
   bandLock,
+  selectedId,
 }: {
   markets: AtlasMarket[];
   onClickMarket: (m: AtlasMarket) => void;
   bandLock: ZoomBand | null;
+  selectedId: string | null;
 }) {
   const { camera } = useThree();
   const [visible, setVisible] = useState(false);
@@ -741,6 +836,7 @@ function MarketNodes({
         const color = new THREE.Color(r / 255, g / 255, b / 255);
         // Size by log-volume so a $60M market isn't 60× bigger than $1M
         const radius = 3 + 7 * Math.log10(Math.max(1, m.volume_usd / 1e4));
+        const dim = selectedId && selectedId !== m.market_id ? 0.18 : 1;
         return (
           <MarketNode
             key={m.market_id}
@@ -749,6 +845,7 @@ function MarketNodes({
             radius={radius}
             label={m.question}
             probability={m.probability}
+            dim={dim}
             onClick={() => onClickMarket(m)}
           />
         );
@@ -763,6 +860,7 @@ function MarketNode({
   radius,
   label,
   probability,
+  dim = 1,
   onClick,
 }: {
   position: [number, number, number];
@@ -770,6 +868,7 @@ function MarketNode({
   radius: number;
   label: string;
   probability: number;
+  dim?: number;
   onClick: () => void;
 }) {
   const ref = useRef<THREE.Mesh>(null);
@@ -791,6 +890,7 @@ function MarketNode({
       <mesh
         ref={ref}
         onPointerEnter={(e) => {
+          if (dim < 0.5) return;
           e.stopPropagation();
           setHovered(true);
           document.body.style.cursor = "pointer";
@@ -800,6 +900,7 @@ function MarketNode({
           document.body.style.cursor = "";
         }}
         onClick={(e) => {
+          if (dim < 0.5) return;
           e.stopPropagation();
           onClick();
         }}
@@ -808,11 +909,11 @@ function MarketNode({
         <meshStandardMaterial
           color={color}
           emissive={color}
-          emissiveIntensity={0.6 + certainty * 0.8}
+          emissiveIntensity={(0.6 + certainty * 0.8) * dim}
           roughness={0.5}
           metalness={0.15}
           transparent
-          opacity={0.5 + certainty * 0.4}
+          opacity={(0.5 + certainty * 0.4) * dim}
         />
       </mesh>
       {hovered && (
@@ -866,7 +967,7 @@ function computeMarketPositions(
     const group = (byCat[cat] ?? []).slice().sort((a, b) => b.volume_usd - a.volume_usd);
     const sectorCenter = -Math.PI / 2 + ci * sectorAngle;
     group.forEach((m, i) => {
-      const c = R * 0.18;
+      const c = R * 0.24;
       const r = c * Math.sqrt(i + 1);
       const localAngle = (i * PHI) % (sectorAngle * 0.55) - sectorAngle * 0.275;
       const angle = sectorCenter + localAngle;
@@ -1104,12 +1205,19 @@ function bountyLabel(b: AtlasBounty): string {
 
 /* ---------- Cross-domain arcs ---------- */
 
-/** Hand-curated arcs from market questions to AI models. The regex-based
- *  auto-detection found 0 matches in current trending Polymarket markets
- *  (most are sports/politics, not AI). We seed 2 demo arcs by category
- *  proxy: the first AI-categorised market → GPT-5.5; the first crypto
- *  market → Llama 4 (since DeFi work often touches LLMs). Tells the
- *  cross-domain story without lying about real connections. */
+type AtlasConnection = {
+  market_id: string;
+  model_id: string;
+  confidence: number;
+  reason: string | null;
+};
+
+/** Real epistemic graph: arcs come from /atlas/connections, where each
+ *  edge is backed by a substring match between a market question and a
+ *  named model (or its alias). Confidence drives opacity + thickness;
+ *  the matched reason is surfaced on hover via drei `<Html>` so the
+ *  user can see *why* the line exists. Top 16 by confidence rendered
+ *  to keep the cosmos legible. */
 function CrossDomainArcs({
   models,
   markets,
@@ -1117,36 +1225,56 @@ function CrossDomainArcs({
   models: AtlasModel[];
   markets: AtlasMarket[];
 }) {
+  const [connections, setConnections] = useState<AtlasConnection[]>([]);
+
+  useEffect(() => {
+    fetch(`${API_URL}/atlas/connections`)
+      .then((r) => r.json())
+      .then((d: { connections: AtlasConnection[] }) =>
+        setConnections(d.connections ?? []),
+      )
+      .catch(() => setConnections([]));
+  }, []);
+
   const arcs = useMemo(() => {
-    if (models.length === 0 || markets.length === 0) return [];
-    const findModel = (id: string) => models.find((m) => m.model_id === id);
-    const aiMarket =
-      markets.find((m) => m.category === "ai") ??
-      markets.find((m) => /\bai|llm|gpt|claude|gemini\b/i.test(m.question));
-    const cryptoMarket = markets.find((m) => m.category === "crypto");
-    const out: Array<{ from: [number, number, number]; to: [number, number, number]; color: string }> = [];
-    const gpt = findModel("gpt-5-5");
-    const llama = findModel("llama-4-405b");
-    if (aiMarket && gpt && aiMarket.layout_x !== null && gpt.layout_x !== null) {
-      const region = REGIONS.find((r) => r.id === "prediction-markets")!;
-      const aiR = REGIONS.find((r) => r.id === "ai-models")!;
-      out.push({
-        from: [aiMarket.layout_x as number, aiMarket.layout_y as number, region.z + 25],
-        to: [gpt.layout_x as number, gpt.layout_y as number, aiR.z + 50],
-        color: "#00d4aa",
-      });
+    if (
+      models.length === 0 ||
+      markets.length === 0 ||
+      connections.length === 0
+    ) {
+      return [];
     }
-    if (cryptoMarket && llama && cryptoMarket.layout_x !== null && llama.layout_x !== null) {
-      const region = REGIONS.find((r) => r.id === "prediction-markets")!;
-      const aiR = REGIONS.find((r) => r.id === "ai-models")!;
-      out.push({
-        from: [cryptoMarket.layout_x as number, cryptoMarket.layout_y as number, region.z + 25],
-        to: [llama.layout_x as number, llama.layout_y as number, aiR.z + 50],
-        color: "#ff6b35",
-      });
-    }
-    return out;
-  }, [models, markets]);
+    const modelById = new Map(models.map((m) => [m.model_id, m]));
+    const marketById = new Map(markets.map((m) => [m.market_id, m]));
+    const modelPositions = computePhyllotaxisPositions(models);
+    const marketPositions = computeMarketPositions(markets);
+
+    const sorted = [...connections]
+      .filter((c) => modelById.has(c.model_id) && marketById.has(c.market_id))
+      .sort((a, b) => b.confidence - a.confidence)
+      .slice(0, 16);
+
+    return sorted.map((c) => {
+      const fromPos = marketPositions[c.market_id];
+      const toPos = modelPositions[c.model_id];
+      // Cyan = high-confidence, lavender = mid, amber = low (proxy/generic)
+      const color =
+        c.confidence >= 0.85
+          ? "#00d4aa"
+          : c.confidence >= 0.55
+            ? "#C7A6FF"
+            : "#ff6b35";
+      return {
+        from: fromPos,
+        to: toPos,
+        color,
+        confidence: c.confidence,
+        reason: c.reason ?? "",
+        market: marketById.get(c.market_id)!,
+        model: modelById.get(c.model_id)!,
+      };
+    });
+  }, [models, markets, connections]);
 
   return (
     <group>
@@ -1172,9 +1300,11 @@ function CrossDomainArcs({
             <Line
               points={points}
               color={arc.color}
-              lineWidth={1.8}
+              // Confidence drives both opacity and thickness — a 1.0
+              // direct-match arc *looks* stronger than a 0.3 generic one.
+              lineWidth={1.2 + arc.confidence * 1.6}
               transparent
-              opacity={0.45}
+              opacity={0.25 + arc.confidence * 0.55}
               dashed={false}
             />
             {/* Three particles staggered along the arc — reads as "data
@@ -1182,10 +1312,88 @@ function CrossDomainArcs({
             <ArcParticle from={arc.from} mid={mid} to={arc.to} color={arc.color} phase={0} />
             <ArcParticle from={arc.from} mid={mid} to={arc.to} color={arc.color} phase={0.33} />
             <ArcParticle from={arc.from} mid={mid} to={arc.to} color={arc.color} phase={0.66} />
+            {/* Hover label at the arc midpoint. drei <Html> renders DOM
+                in 3D so the user can read the actual market question +
+                model + match reason without leaving the cosmos. */}
+            <ArcLabel
+              position={mid}
+              color={arc.color}
+              confidence={arc.confidence}
+              reason={arc.reason}
+              question={arc.market.question}
+              modelName={arc.model.name}
+            />
           </group>
         );
       })}
     </group>
+  );
+}
+
+function ArcLabel({
+  position,
+  color,
+  confidence,
+  reason,
+  question,
+  modelName,
+}: {
+  position: [number, number, number];
+  color: string;
+  confidence: number;
+  reason: string;
+  question: string;
+  modelName: string;
+}) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <Html
+      position={position}
+      center
+      distanceFactor={500}
+      occlude={false}
+      style={{ pointerEvents: "auto" }}
+    >
+      <div
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        className="font-mono select-none"
+        style={{ minWidth: 32, color }}
+      >
+        {!hovered ? (
+          <button
+            type="button"
+            className="text-[10px] uppercase tracking-widest border px-1.5 py-0.5 backdrop-blur"
+            style={{
+              borderColor: color,
+              background: "rgba(4,5,10,0.78)",
+              color,
+            }}
+          >
+            {(confidence * 100).toFixed(0)}%
+          </button>
+        ) : (
+          <div
+            className="text-[10px] border p-2 w-[280px] backdrop-blur leading-snug text-left"
+            style={{
+              borderColor: color,
+              background: "rgba(4,5,10,0.92)",
+              color: "#e6e8f0",
+            }}
+          >
+            <div
+              className="uppercase tracking-widest mb-1.5"
+              style={{ color }}
+            >
+              connection · {(confidence * 100).toFixed(0)}% confidence
+            </div>
+            <div className="text-white/85 mb-1">{question}</div>
+            <div className="text-white/55">↳ {modelName}</div>
+            <div className="text-white/40 mt-1.5 italic">{reason}</div>
+          </div>
+        )}
+      </div>
+    </Html>
   );
 }
 

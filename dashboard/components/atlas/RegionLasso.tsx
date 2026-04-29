@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+
+import { registry, projectToScreen, type EntityRecord } from "@/lib/atlas/entityRegistry";
 
 /**
  * Screen-space region lasso for staking, with three shape modes:
@@ -284,19 +286,30 @@ function StakeCard({
   shape: Shape;
   onDismiss: () => void;
 }) {
-  // Aggregate metric: stable-looking from bounding box + shape kind
-  const seed =
-    (bb.x + bb.y * 0.31 + bb.w * bb.h * 0.0007 + shape.kind.length * 13.7) % 1;
-  const direction: "long" | "short" = seed > 0.5 ? "long" : "short";
-  const confidence = 0.42 + ((seed * 17) % 0.46);
-  const nodeCount = Math.max(2, Math.floor((bb.w * bb.h) / 14000));
-  const avgScore = 60 + ((seed * 31) % 30);
+  // *** Deterministic capture from real entities. ***
+  // Project every registered entity's 3D position to screen-space using
+  // the live camera, then point-in-shape test against the lasso. Same
+  // shape over the same region → same numbers, every time.
+  const aggregate = useMemo(() => captureEntities(shape), [shape]);
 
-  const cardWidth = 308;
+  const cardWidth = 320;
   const left =
     bb.x + bb.w + cardWidth + 12 < window.innerWidth
       ? bb.x + bb.w + 12
       : Math.max(12, bb.x - cardWidth);
+
+  const directionLabel =
+    aggregate.consensus === 0
+      ? "neutral"
+      : aggregate.consensus > 0
+        ? "long"
+        : "short";
+  const directionColor =
+    aggregate.consensus > 0
+      ? "#00d4aa"
+      : aggregate.consensus < 0
+        ? "#ff6b35"
+        : "#9aa0b5";
 
   return (
     <motion.div
@@ -304,7 +317,7 @@ function StakeCard({
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: 8 }}
       transition={{ type: "spring", damping: 22, stiffness: 240 }}
-      className="absolute border border-cyan bg-bg/92 backdrop-blur p-4 w-72 pointer-events-auto"
+      className="absolute border border-cyan bg-bg/92 backdrop-blur p-4 w-80 pointer-events-auto"
       style={{ left, top: bb.y }}
       onPointerDown={(e) => e.stopPropagation()}
     >
@@ -313,15 +326,46 @@ function StakeCard({
       </p>
       <p className="font-display text-2xl text-white mb-3">stake on this region</p>
 
-      <div className="space-y-2 mb-4">
-        <Row label="nodes captured" value={String(nodeCount)} />
-        <Row label="avg quality" value={avgScore.toFixed(1)} />
-        <Row
-          label="consensus"
-          value={`${(confidence * 100).toFixed(0)}% ${direction}`}
-          valueColor={direction === "long" ? "#00d4aa" : "#ff6b35"}
-        />
-      </div>
+      {aggregate.count === 0 ? (
+        <div className="border border-amber/40 bg-amber/10 p-3 font-mono text-[11px] text-amber mb-4">
+          no nodes captured — try a bigger region, or zoom in so entities
+          are visible on screen
+        </div>
+      ) : (
+        <div className="space-y-2 mb-4">
+          <Row label="nodes captured" value={String(aggregate.count)} />
+          {aggregate.byKind.model > 0 && (
+            <Row
+              label="ai models"
+              value={`${aggregate.byKind.model}`}
+              valueColor="#00d4aa"
+            />
+          )}
+          {aggregate.byKind.market > 0 && (
+            <Row
+              label="markets"
+              value={`${aggregate.byKind.market}`}
+              valueColor="#C7A6FF"
+            />
+          )}
+          {aggregate.byKind.bounty > 0 && (
+            <Row
+              label="proof bounties"
+              value={`${aggregate.byKind.bounty}`}
+              valueColor="#7DD3F7"
+            />
+          )}
+          <Row
+            label="avg quality"
+            value={aggregate.avgScore.toFixed(1)}
+          />
+          <Row
+            label="consensus"
+            value={`${(aggregate.confidence * 100).toFixed(0)}% ${directionLabel}`}
+            valueColor={directionColor}
+          />
+        </div>
+      )}
 
       <button
         type="button"
@@ -340,6 +384,90 @@ function StakeCard({
       </button>
     </motion.div>
   );
+}
+
+/* ---------- entity capture (real, deterministic) ---------- */
+
+type Aggregate = {
+  count: number;
+  byKind: { model: number; market: number; bounty: number };
+  avgScore: number;
+  /** -1..1 — sign indicates direction (long/short), magnitude indicates
+   *  agreement among captured entities. */
+  consensus: number;
+  /** Magnitude of consensus, expressed as a 0..1 "confidence". */
+  confidence: number;
+};
+
+function captureEntities(shape: Shape): Aggregate {
+  const captured: EntityRecord[] = [];
+  for (const e of registry.entities) {
+    const screen = projectToScreen(e.position);
+    if (!screen) continue;
+    if (pointInShape(screen, shape)) captured.push(e);
+  }
+
+  if (captured.length === 0) {
+    return {
+      count: 0,
+      byKind: { model: 0, market: 0, bounty: 0 },
+      avgScore: 0,
+      consensus: 0,
+      confidence: 0,
+    };
+  }
+
+  const byKind = { model: 0, market: 0, bounty: 0 };
+  let scoreSum = 0;
+  let dirSum = 0;
+  let dirN = 0;
+  for (const e of captured) {
+    byKind[e.kind] += 1;
+    scoreSum += e.score;
+    if (e.direction !== 0) {
+      dirSum += e.direction;
+      dirN += 1;
+    }
+  }
+  const consensus = dirN === 0 ? 0 : dirSum / dirN;
+  return {
+    count: captured.length,
+    byKind,
+    avgScore: scoreSum / captured.length,
+    consensus,
+    confidence: Math.abs(consensus),
+  };
+}
+
+function pointInShape(p: [number, number], shape: Shape): boolean {
+  const [x, y] = p;
+  if (shape.kind === "rect") {
+    const r = shape.rect;
+    return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+  }
+  if (shape.kind === "ellipse") {
+    const r = shape.rect;
+    if (r.w === 0 || r.h === 0) return false;
+    const cx = r.x + r.w / 2;
+    const cy = r.y + r.h / 2;
+    const dx = (x - cx) / (r.w / 2);
+    const dy = (y - cy) / (r.h / 2);
+    return dx * dx + dy * dy <= 1;
+  }
+  // freehand polygon — ray-casting
+  const pts = shape.points;
+  let inside = false;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const xi = pts[i][0],
+      yi = pts[i][1];
+    const xj = pts[j][0],
+      yj = pts[j][1];
+    const intersect =
+      yi > y !== yj > y &&
+      x < ((xj - xi) * (y - yi)) / (yj - yi || 1e-9) + xi;
+    if (intersect) inside = !inside;
+  }
+  return inside;
 }
 
 function Row({
