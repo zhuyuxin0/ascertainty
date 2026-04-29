@@ -3,6 +3,10 @@
 .env.*
 !.env.example
 
+# Agent direction file — local-only per project rules
+CLAUDE.md
+docs/FOUNDING_DOCUMENT.md
+
 # Python
 __pycache__/
 *.pyc
