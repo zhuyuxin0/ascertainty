@@ -12,6 +12,10 @@ export type Region = {
   name: string;
   subtitle: string;
   position: [number, number];
+  /** Z-depth for the 3D cosmos. Live regions sit slightly forward (+),
+   *  placeholders slightly back (−), giving parallax when the OrbitControls
+   *  camera rotates. Range roughly [-80, 80]. */
+  z: number;
   radius: number;
   color: [number, number, number]; // RGB 0-255
   status: RegionStatus;
@@ -25,6 +29,7 @@ export const REGIONS: Region[] = [
     name: "Math Proof Formalization",
     subtitle: "Lean 4 kernel-checked claims",
     position: [-380, 280],
+    z: 40,
     radius: 130,
     color: [0, 212, 170],
     status: "live",
@@ -35,6 +40,7 @@ export const REGIONS: Region[] = [
     name: "AI Models",
     subtitle: "Benchmark intelligence map",
     position: [380, 280],
+    z: 60,
     radius: 180,
     color: [0, 212, 170],
     status: "live",
@@ -45,6 +51,7 @@ export const REGIONS: Region[] = [
     name: "DeFi Security",
     subtitle: "Formal verification posture",
     position: [-380, -280],
+    z: -50,
     radius: 110,
     color: [110, 110, 130],
     status: "placeholder",
@@ -56,6 +63,7 @@ export const REGIONS: Region[] = [
     name: "Prediction Markets",
     subtitle: "Topic-clustered consensus",
     position: [380, -280],
+    z: 50,
     radius: 160,
     color: [0, 212, 170],
     status: "live",
@@ -66,6 +74,7 @@ export const REGIONS: Region[] = [
     name: "Engineering Simulations",
     subtitle: "PINN-verified physics",
     position: [0, -440],
+    z: -70,
     radius: 100,
     color: [110, 110, 130],
     status: "placeholder",
@@ -77,6 +86,7 @@ export const REGIONS: Region[] = [
     name: "Scientific Claims",
     subtitle: "Preprint → replication → proof",
     position: [0, 460],
+    z: -40,
     radius: 100,
     color: [110, 110, 130],
     status: "placeholder",

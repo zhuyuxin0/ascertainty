@@ -8,18 +8,19 @@ import { ASCertaintyOverlay } from "@/components/atlas/ASCertaintyOverlay";
 import { ModelSidePanel } from "@/components/atlas/SidePanel";
 import { type Region } from "@/lib/atlas/regions";
 import { type AtlasModel } from "@/lib/atlas/types";
+import { type ZoomBand } from "@/lib/atlas/zoomLevels";
 
-// deck.gl touches `window` on import, so the canvas is client-only.
-const CosmosCanvas = dynamic(
+// r3f Canvas needs window/document, so the 3D cosmos is client-only.
+const CosmosScene = dynamic(
   () =>
-    import("@/components/atlas/CosmosCanvas").then((m) => ({
-      default: m.CosmosCanvas,
+    import("@/components/atlas/CosmosScene").then((m) => ({
+      default: m.CosmosScene,
     })),
   {
     ssr: false,
     loading: () => (
       <div className="absolute inset-0 grid place-items-center font-mono text-xs uppercase tracking-widest text-white/40">
-        <span className="animate-pulse">loading cosmos…</span>
+        <span className="animate-pulse">spinning up cosmos…</span>
       </div>
     ),
   },
@@ -29,13 +30,19 @@ export default function AtlasPage() {
   const [overlayVisible, setOverlayVisible] = useState(true);
   const [activeRegion, setActiveRegion] = useState<Region | null>(null);
   const [selectedModel, setSelectedModel] = useState<AtlasModel | null>(null);
+  const [bandLock, setBandLock] = useState<ZoomBand | null>(null);
+  const [currentBand, setCurrentBand] = useState<ZoomBand>("cosmos");
+
+  const displayBand = bandLock ?? currentBand;
 
   return (
     <main className="fixed inset-0 bg-bg overflow-hidden">
       <div className="absolute inset-0">
-        <CosmosCanvas
+        <CosmosScene
           onActiveRegion={setActiveRegion}
           onSelectModel={setSelectedModel}
+          bandLock={bandLock}
+          onBandChange={setCurrentBand}
         />
       </div>
 
@@ -44,13 +51,13 @@ export default function AtlasPage() {
         onClose={() => setSelectedModel(null)}
       />
 
-      {/* HUD */}
+      {/* HUD: brand + nav */}
       <div className="absolute top-4 left-6 z-30 flex items-center gap-3 pointer-events-none">
         <span className="font-display text-2xl text-cyan tracking-wide">
           Ascertainty
         </span>
         <span className="font-mono text-[10px] uppercase tracking-widest text-white/40">
-          atlas · cosmos view
+          atlas · {displayBand} {bandLock ? "· locked" : "view"}
         </span>
       </div>
 
@@ -75,7 +82,40 @@ export default function AtlasPage() {
         </Link>
       </div>
 
-      {/* Region status chip */}
+      {/* Band-lock toggle: top center */}
+      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 pointer-events-auto flex items-center gap-2 border border-line bg-bg/70 backdrop-blur px-2 py-1">
+        <span className="font-mono text-[9px] uppercase tracking-widest text-white/40 px-2">
+          band
+        </span>
+        {(["cosmos", "domain", "entity", "detail"] as const).map((b) => {
+          const active = displayBand === b;
+          const locked = bandLock === b;
+          return (
+            <button
+              key={b}
+              type="button"
+              onClick={() => setBandLock(locked ? null : b)}
+              className={`font-mono text-[10px] uppercase tracking-widest px-2 py-1 transition-colors ${
+                locked
+                  ? "border border-cyan text-cyan bg-cyan/10"
+                  : active
+                    ? "text-cyan/80 hover:text-cyan"
+                    : "text-white/40 hover:text-white/70"
+              }`}
+              title={
+                locked
+                  ? `unlock ${b}`
+                  : `lock to ${b} (camera can pan freely without changing band)`
+              }
+            >
+              {locked ? "🔒 " : ""}
+              {b}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Region status chip — bottom-right */}
       {activeRegion && (
         <div className="absolute bottom-6 right-6 z-30 border border-line bg-bg/80 backdrop-blur p-3 pointer-events-none max-w-xs">
           <div
@@ -99,6 +139,13 @@ export default function AtlasPage() {
           )}
         </div>
       )}
+
+      {/* Interaction hint — bottom-left */}
+      <div className="absolute bottom-6 left-6 z-20 font-mono text-[9px] uppercase tracking-widest text-white/30 pointer-events-none leading-relaxed">
+        <div>drag · rotate</div>
+        <div>⌘ / ctrl + drag · pan</div>
+        <div>scroll · zoom</div>
+      </div>
 
       {overlayVisible && (
         <ASCertaintyOverlay onDismiss={() => setOverlayVisible(false)} />
