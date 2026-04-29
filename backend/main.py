@@ -926,12 +926,20 @@ async def atlas_connections_endpoint() -> dict[str, Any]:
 
 @app.post("/atlas/refresh")
 async def atlas_refresh_endpoint() -> dict[str, Any]:
-    """Trigger a one-shot ingest. Idempotent. Models from the curated
-    snapshot, markets from Polymarket public CLOB. UMAP recomputed
-    after ingestion in a follow-up endpoint (not yet wired)."""
-    from backend.atlas import ingest_models, ingest_polymarket
+    """One-shot ingest + layout + connection rebuild. Idempotent.
+    Persists curated model snapshot, scrapes Polymarket Gamma for active
+    markets, computes deterministic 2D layouts, builds cross-domain
+    edges. Runs in ~5 seconds."""
+    from backend.atlas import ingest_models, ingest_polymarket, layout, connections
     n_models = await ingest_models.ingest_once()
     n_markets = await ingest_polymarket.ingest_once()
-    return {"models": n_models, "markets": n_markets}
+    layout_counts = await layout.recompute_all()
+    n_edges = await connections.rebuild_connections()
+    return {
+        "models": n_models,
+        "markets": n_markets,
+        "layout": layout_counts,
+        "connections": n_edges,
+    }
 
 
