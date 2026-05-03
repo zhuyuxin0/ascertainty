@@ -187,6 +187,15 @@ export function HUD({ stats }: { stats: LiveStats }) {
         <button type="button" onClick={onBookmark} className="hover:text-ink/94 transition-colors cursor-pointer" {...tipPair("bookmark", "Save the current view to your atlas.", [["click", "view bookmarked"]])}>
           bookmark
         </button>
+        <button
+          type="button"
+          onClick={() => setLibrary(true)}
+          className="flex items-baseline gap-1.5 border border-ink/22 px-2.5 py-1 hover:border-peacock hover:text-ink/94 transition-colors cursor-pointer"
+          {...tipPair("library", "Your persona iNFTs and owned MinionNFTs.", [["click", "open library drawer"], ["⌘ K", "toggle from anywhere"]])}
+        >
+          <span>library</span>
+          <span className="text-ink/46 text-[9px] tracking-[0.18em]">⌘K</span>
+        </button>
         <Link href="https://github.com/zhuyuxin0/ascertainty" target="_blank" rel="noopener noreferrer" className="hover:text-ink/94 transition-colors" {...tipPair("source · github", "Open the Ascertainty repo in a new tab.", [["click", "opens repo"]])}>
           github
         </Link>
