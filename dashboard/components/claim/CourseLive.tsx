@@ -55,6 +55,8 @@ type CarState = {
   lastEventAt: number;     // timestamp for "since" polling
 };
 
+type ProgressData = { fraction?: number; progress?: number };
+
 export function CourseLive({ bounty }: { bounty: Bounty }) {
   const spec = useMemo(() => specFromBounty(bounty), [bounty]);
   const track = useMemo(() => buildTrack2D(spec), [spec]);
@@ -264,7 +266,7 @@ function FinishMark({ p }: { p: Pt }) {
       <text
         x="14"
         y="6"
-        fontFamily="var(--font-fraunces), serif"
+        fontFamily="var(--font-instrument-serif), ui-serif, Georgia, serif"
         fontStyle="italic"
         fontSize="22"
         fill="#C76A2B"
@@ -426,8 +428,16 @@ function applyEvents(prev: Map<string, CarState>, events: RaceEvent[], order: st
     const data = parseData(ev.data_json);
     switch (ev.event_type) {
       case "progress": {
-        const p = typeof data.progress === "number" ? data.progress : car.progress;
-        car = { ...car, progress: clamp01(p), status: "racing", lastEventGlyph: `▲ ${Math.round(p * 100)}%`, lastEventAt: ev.ts };
+        // Backend writes `fraction` (0..1) on the progress payload; older
+        // events used `progress`. Accept either so seeded races render.
+        const raw =
+          typeof data.fraction === "number"
+            ? data.fraction
+            : typeof data.progress === "number"
+            ? data.progress
+            : car.progress;
+        const p = clamp01(raw);
+        car = { ...car, progress: p, status: "racing", lastEventGlyph: `▲ ${Math.round(p * 100)}%`, lastEventAt: ev.ts };
         break;
       }
       case "backtrack":
@@ -448,10 +458,10 @@ function applyEvents(prev: Map<string, CarState>, events: RaceEvent[], order: st
   return next;
 }
 
-function parseData(s: string | null): { progress?: number; [k: string]: unknown } {
+function parseData(s: string | null): ProgressData {
   if (!s) return {};
   try {
-    return JSON.parse(s);
+    return JSON.parse(s) as ProgressData;
   } catch {
     return {};
   }

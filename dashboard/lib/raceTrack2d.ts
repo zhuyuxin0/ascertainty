@@ -59,9 +59,11 @@ export function specFromBounty(b: {
 }): TrackSpec {
   const difficulty = clamp(b.difficulty ?? 5, 1, 10);
   const novelty = clamp(b.novelty ?? 5, 1, 10);
-  // erdos_class is 1..10 with 1 = closest to known math (easy) and
-  // 10 = far frontier (hard). Map to hardness 0..1.
-  const erdos = clamp(b.erdos_class ?? 5, 1, 10);
+  // erdos_class is 0..10 in practice (0 = unrated, 1 = close to known
+  // math, 10 = frontier). Treat 0 as "unknown → mid-range" so the
+  // track still renders with interesting curvature.
+  const erdosRaw = b.erdos_class ?? 0;
+  const erdos = erdosRaw === 0 ? 5 : clamp(erdosRaw, 1, 10);
   return {
     depth: difficulty,
     breadth: Math.max(2, Math.round((novelty + difficulty) / 3)),
