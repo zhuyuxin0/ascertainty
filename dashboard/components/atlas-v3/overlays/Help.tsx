@@ -1,10 +1,16 @@
 "use client";
-/* Help — keymap card centered on the field.
+/* Help — keymap card, draggable from header, centered on every open.
  *
- * Triggered by ? key, or by clicking "? help" in the bottom-left
- * keymap hints. ESC dismisses; click outside dismisses. */
+ * Anatomy: header drag handle (with `⋮⋮` glyph + cursor-grab) + close
+ * X. Body lists 12 keys. ESC + click-outside dismiss. Position resets
+ * to center on every open so the user always finds it where expected.
+ *
+ * Centering: a flex grid parent positions the card; framer-motion's
+ * `drag` + `useMotionValue` track the user's offset without fighting
+ * Tailwind's translate centering trick. */
 
-import { motion, AnimatePresence } from "framer-motion";
+import { useEffect } from "react";
+import { motion, AnimatePresence, useMotionValue, useDragControls } from "framer-motion";
 
 import { useAtlasV3 } from "@/lib/atlas-v3/state";
 
@@ -26,6 +32,17 @@ const KEYS: Array<[string, string]> = [
 export function HelpOverlay() {
   const open = useAtlasV3((s) => s.help);
   const setHelp = useAtlasV3((s) => s.setHelp);
+  const x = useMotionValue(0);
+  const y = useMotionValue(0);
+  const dragControls = useDragControls();
+
+  // Reset to center every open
+  useEffect(() => {
+    if (open) {
+      x.set(0);
+      y.set(0);
+    }
+  }, [open, x, y]);
 
   return (
     <AnimatePresence>
@@ -39,42 +56,59 @@ export function HelpOverlay() {
             style={{ background: "rgba(250, 246, 232, 0.8)" }}
             onClick={() => setHelp(false)}
           />
-          <motion.div
-            initial={{ opacity: 0, scale: 0.96, y: 8 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.96, y: 8 }}
-            transition={{ type: "spring", damping: 22, stiffness: 240 }}
-            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[101] w-[480px] border border-ink/22 bg-cream-card shadow-xl"
-          >
-            <div className="flex items-baseline justify-between px-5 py-3 border-b border-ink/12">
-              <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-peacock">¶ keymap</span>
-              <button
-                type="button"
-                onClick={() => setHelp(false)}
-                className="font-mono text-[14px] text-ink/46 hover:text-ink/94 leading-none cursor-pointer transition-colors"
+          <div className="fixed inset-0 z-[101] grid place-items-center pointer-events-none">
+            <motion.div
+              drag
+              dragListener={false}
+              dragControls={dragControls}
+              dragMomentum={false}
+              dragElastic={0}
+              style={{ x, y }}
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.96 }}
+              transition={{ type: "spring", damping: 22, stiffness: 240 }}
+              className="pointer-events-auto w-[480px] max-w-[calc(100vw-32px)] border border-ink/22 bg-cream-card shadow-xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div
+                onPointerDown={(e) => dragControls.start(e)}
+                className="flex items-center justify-between px-5 py-3 border-b border-ink/12 cursor-grab active:cursor-grabbing select-none"
+                style={{ touchAction: "none" }}
               >
-                ✕
-              </button>
-            </div>
-            <div className="p-6">
-              <h2 className="font-display italic text-[28px] leading-tight text-ink/94 mb-1">
-                navigate the <em className="text-persimmon">cosmos</em>.
-              </h2>
-              <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink/46 mb-5">
-                mouse + keyboard reference
-              </p>
-              <div className="grid grid-cols-[160px_1fr] gap-x-4 gap-y-2 font-mono text-[11px]">
-                {KEYS.map(([k, v]) => (
-                  <div key={k} className="contents">
-                    <span className="font-hash text-[12px] text-ink/94 normal-case tracking-normal border border-ink/12 bg-cream px-1.5 py-0.5 self-start">
-                      {k}
-                    </span>
-                    <span className="text-ink/66 self-center">{v}</span>
-                  </div>
-                ))}
+                <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-peacock flex items-center gap-2">
+                  <span className="text-ink/46">⋮⋮</span>
+                  <span>¶ keymap</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setHelp(false)}
+                  className="font-mono text-[14px] text-ink/46 hover:text-ink/94 leading-none cursor-pointer transition-colors"
+                  aria-label="close keymap"
+                >
+                  ✕
+                </button>
               </div>
-            </div>
-          </motion.div>
+              <div className="p-6">
+                <h2 className="font-display italic text-[28px] leading-tight text-ink/94 mb-1">
+                  navigate the <em className="text-persimmon">cosmos</em>.
+                </h2>
+                <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink/46 mb-5">
+                  mouse + keyboard reference · drag header to reposition
+                </p>
+                <div className="grid grid-cols-[160px_1fr] gap-x-4 gap-y-2 font-mono text-[11px]">
+                  {KEYS.map(([k, v]) => (
+                    <div key={k} className="contents">
+                      <span className="font-hash text-[12px] text-ink/94 normal-case tracking-normal border border-ink/12 bg-cream px-1.5 py-0.5 self-start">
+                        {k}
+                      </span>
+                      <span className="text-ink/66 self-center">{v}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </motion.div>
+          </div>
         </>
       )}
     </AnimatePresence>

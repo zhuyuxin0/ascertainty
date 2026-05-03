@@ -100,16 +100,20 @@ export function Cosmos({
   const vbX = panRangeX * viewport.x;
   const vbY = panRangeY * viewport.y;
 
-  // Drag-to-pan: only fires when mousedown lands on the SVG itself
-  // (not a region/persona child). Click events still fire on children
-  // because we don't preventDefault on the parent.
-  const dragRef = useRef<{ startX: number; startY: number; vx: number; vy: number; w: number; h: number } | null>(null);
+  // Drag-to-pan: track every mousedown anywhere on the SVG. If the
+  // pointer moves > DRAG_THRESHOLD before mouseup, treat it as a pan
+  // (and suppress any child onClick via the capture-phase guard
+  // below). Otherwise the child onClick fires normally and the mouse-
+  // down was a no-op. This pattern lets users drag from anywhere
+  // INCLUDING over a region planet — they just have to commit to
+  // movement to indicate intent.
+  const dragRef = useRef<{ startX: number; startY: number; vx: number; vy: number; w: number; h: number; moved: boolean } | null>(null);
+  const dragSuppressClick = useRef(false);
   const [dragging, setDragging] = useState(false);
+  const DRAG_THRESHOLD = 5; // px
 
   const onSvgMouseDown = (e: React.MouseEvent<SVGSVGElement>) => {
-    // Only initiate drag on bare canvas, not on a region/persona node
-    if (e.target !== e.currentTarget) return;
-    if (panRangeX === 0 && panRangeY === 0) return; // nothing to pan if not zoomed in
+    if (panRangeX === 0 && panRangeY === 0) return; // nothing to pan
     const rect = e.currentTarget.getBoundingClientRect();
     dragRef.current = {
       startX: e.clientX,
@@ -118,13 +122,20 @@ export function Cosmos({
       vy: viewport.y,
       w: rect.width,
       h: rect.height,
+      moved: false,
     };
-    setDragging(true);
     const onMove = (ev: MouseEvent) => {
       if (!dragRef.current) return;
       const dxPx = ev.clientX - dragRef.current.startX;
       const dyPx = ev.clientY - dragRef.current.startY;
-      // Convert pixel delta to viewport delta (inverted — drag right pans the cosmos right)
+      if (!dragRef.current.moved && Math.hypot(dxPx, dyPx) < DRAG_THRESHOLD) return;
+      if (!dragRef.current.moved) {
+        dragRef.current.moved = true;
+        setDragging(true);
+      }
+      // Pixel delta → viewport delta, inverted (drag right pans cosmos
+      // right, so visible content moves left). Scale by panRange so
+      // dragging all the way across the canvas pans the full range.
       const dvx = -dxPx / dragRef.current.w;
       const dvy = -dyPx / dragRef.current.h;
       setViewport({
@@ -133,13 +144,32 @@ export function Cosmos({
       });
     };
     const onUp = () => {
+      const wasDrag = dragRef.current?.moved ?? false;
       dragRef.current = null;
       setDragging(false);
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
+      if (wasDrag) {
+        // Suppress the impending click event on whichever child the
+        // user happened to land on. Resets after one event tick.
+        dragSuppressClick.current = true;
+        window.setTimeout(() => {
+          dragSuppressClick.current = false;
+        }, 0);
+      }
     };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
+  };
+
+  // Capture-phase click guard — if the previous mouseup ended a real
+  // drag, swallow the resulting click before any region/persona handler
+  // sees it.
+  const onSvgClickCapture = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (dragSuppressClick.current) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
   };
 
   // Scroll-to-zoom. Anchors zoom near the cursor for natural feel.
@@ -162,6 +192,7 @@ export function Cosmos({
           transition: dragging ? "none" : "all 200ms cubic-bezier(0.22, 1, 0.36, 1)",
         }}
         onMouseDown={onSvgMouseDown}
+        onClickCapture={onSvgClickCapture}
         onWheel={onWheel}
       >
         <defs>

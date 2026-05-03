@@ -25,10 +25,12 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
 import { useAtlasV3, type Band } from "@/lib/atlas-v3/state";
 import { REGIONS } from "@/lib/atlas-v3/regions";
+
+import { WalletChip } from "./hud/WalletChip";
 
 const EXPLORER = "https://chainscan-galileo.0g.ai";
 
@@ -49,8 +51,6 @@ export function HUD({ stats }: { stats: LiveStats }) {
   const setLasso = useAtlasV3((s) => s.setLasso);
   const setHelp = useAtlasV3((s) => s.setHelp);
   const setLibrary = useAtlasV3((s) => s.setLibrary);
-  const setWalletMenu = useAtlasV3((s) => s.setWalletMenu);
-  const walletMenu = useAtlasV3((s) => s.walletMenu);
   const pushToast = useAtlasV3((s) => s.pushToast);
   const showTooltip = useAtlasV3((s) => s.showTooltip);
   const moveTooltip = useAtlasV3((s) => s.moveTooltip);
@@ -190,21 +190,8 @@ export function HUD({ stats }: { stats: LiveStats }) {
         <Link href="https://github.com/zhuyuxin0/ascertainty" target="_blank" rel="noopener noreferrer" className="hover:text-ink/94 transition-colors" {...tipPair("source · github", "Open the Ascertainty repo in a new tab.", [["click", "opens repo"]])}>
           github
         </Link>
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            setWalletMenu(!walletMenu);
-          }}
-          className="flex items-center gap-1.5 border border-ink/22 px-2.5 py-1 cursor-pointer hover:border-peacock transition-colors"
-          {...tipPair("wallet", "0x8f2…4c1e on 0G mainnet · click for menu.", [["click", "opens wallet menu"]])}
-        >
-          <span className="text-peacock text-[12px]">●</span>
-          <span className="text-ink/94">0G</span>
-          <span className="font-hash text-ink/66 normal-case tracking-normal">0x8f2…4c1e</span>
-        </button>
+        <WalletChip />
       </div>
-      {walletMenu && <WalletMenuPlaceholder onClose={() => setWalletMenu(false)} />}
 
       {/* ── Now-observing (right rail, below wallet) ── */}
       <NowObserving stats={stats} observe={observe} />
@@ -235,11 +222,10 @@ export function HUD({ stats }: { stats: LiveStats }) {
         </button>
       </div>
 
-      {/* ── Bottom-center volume strip + draw-region ── */}
+      {/* ── Bottom-center draw-region CTA (volume-strip caption removed
+          per editorial trim — was inherited theatre, didn't add product
+          value) ── */}
       <div className="absolute bottom-7 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 pointer-events-auto">
-        <span className="font-mono text-[10px] uppercase tracking-[0.32em] text-ink/26">
-          vol. iv · the verification quarterly · 2026
-        </span>
         <button
           type="button"
           onClick={() => {
@@ -653,28 +639,5 @@ function Stat({ k, v, c }: { k: string; v: string; c: string }) {
   );
 }
 
-function WalletMenuPlaceholder({ onClose }: { onClose: () => void }) {
-  useEffect(() => {
-    const onDoc = (e: MouseEvent) => {
-      if (!(e.target as HTMLElement).closest?.("[data-wallet-menu]")) onClose();
-    };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, [onClose]);
-
-  return (
-    <div
-      data-wallet-menu
-      className="absolute top-[64px] right-7 pointer-events-auto border border-ink/12 backdrop-blur px-4 py-3 w-[240px] z-20"
-      style={{ background: "rgba(250, 246, 232, 0.96)" }}
-    >
-      <div className="font-mono text-[9px] uppercase tracking-[0.22em] text-ink/46 mb-2">wallet · 0G mainnet</div>
-      <div className="font-hash text-[12px] text-ink/94 mb-3">0x8f2…4c1e</div>
-      <div className="flex flex-col gap-1.5 font-mono text-[11px] text-ink/66">
-        <button type="button" className="text-left hover:text-peacock transition-colors cursor-pointer">copy address</button>
-        <button type="button" className="text-left hover:text-peacock transition-colors cursor-pointer">view on explorer ↗</button>
-        <button type="button" className="text-left hover:text-rose transition-colors cursor-pointer">disconnect</button>
-      </div>
-    </div>
-  );
-}
+/* Old WalletMenuPlaceholder removed — RainbowKit's <WalletChip /> now
+   handles the connected/disconnected states + account modal directly. */
