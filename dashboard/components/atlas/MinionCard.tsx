@@ -50,7 +50,7 @@ export function MinionCard({
     >
       {/* Top header strip — token id + role */}
       <div className="flex items-center justify-between text-[9px] uppercase tracking-widest">
-        <span className="text-white/40">#{tokenId}</span>
+        <span className="text-bone/66">#{tokenId}</span>
         <span style={{ color: recipe.primaryColor }}>{roleLabel}</span>
       </div>
 
@@ -94,21 +94,21 @@ export function MinionCard({
 
       {/* Stat block */}
       <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[9px]">
-        <div className="text-white/40 uppercase tracking-widest">body</div>
-        <div className="text-white/85 text-right">{recipe.bodyLabel}</div>
-        <div className="text-white/40 uppercase tracking-widest">palette</div>
+        <div className="text-bone/66 uppercase tracking-widest">body</div>
+        <div className="text-bone text-right">{recipe.bodyLabel}</div>
+        <div className="text-bone/66 uppercase tracking-widest">palette</div>
         <div
           className="text-right"
           style={{ color: recipe.primaryColor }}
         >
           {paletteName(recipe.primaryColor)}
         </div>
-        <div className="text-white/40 uppercase tracking-widest">field</div>
-        <div className="text-white/85 text-right">{recipe.backgroundLabel}</div>
+        <div className="text-bone/66 uppercase tracking-widest">field</div>
+        <div className="text-bone text-right">{recipe.backgroundLabel}</div>
       </div>
 
       {/* Footer — seed (deterministic from chain) */}
-      <div className="text-[8px] font-hash text-white/30 truncate border-t border-line/40 pt-1 mt-0.5">
+      <div className="text-[8px] font-hash text-bone/42 truncate border-t border-bone/10 pt-1 mt-0.5">
         seed {seed.slice(0, 14)}…
       </div>
     </div>
@@ -253,12 +253,12 @@ function CrystalBody({ primary, secondary }: { primary: string; secondary: strin
 
 function paletteName(color: string): string {
   const map: Record<string, string> = {
-    "#00d4aa": "cyan",
-    "#ff6b35": "amber",
-    "#a855f7": "violet",
-    "#22c55e": "emerald",
-    "#ec4899": "rose",
-    "#0ea5e9": "sky",
+    "#7DD3F7": "peacock",
+    "#FFB849": "persimmon",
+    "#B59AE5": "lavender",
+    "#6FBFD9": "math",
+    "#F0617D": "rose",
+    "#D9847E": "mkt",
   };
   return map[color] ?? "custom";
 }

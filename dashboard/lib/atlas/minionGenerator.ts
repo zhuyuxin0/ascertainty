@@ -34,13 +34,17 @@ export type MinionRecipe = {
   bodyLabel: string;
 };
 
+/* Aurora-tuned palette. Order preserved so existing minted minions
+ * keep their paletteIdx → palette mapping (the on-chain seed drives
+ * the index; only the hex values changed from the legacy primaries
+ * to the aurora aliases that match the landing/claim system). */
 const PALETTES: Array<{ name: string; primary: string; secondary: string }> = [
-  { name: "cyan", primary: "#00d4aa", secondary: "#0a8c70" },
-  { name: "amber", primary: "#ff6b35", secondary: "#cc4d1a" },
-  { name: "violet", primary: "#a855f7", secondary: "#7e3ed1" },
-  { name: "emerald", primary: "#22c55e", secondary: "#15803d" },
-  { name: "rose", primary: "#ec4899", secondary: "#be185d" },
-  { name: "sky", primary: "#0ea5e9", secondary: "#0369a1" },
+  { name: "peacock",   primary: "#7DD3F7", secondary: "#2A6F8E" },
+  { name: "persimmon", primary: "#FFB849", secondary: "#B97614" },
+  { name: "lavender",  primary: "#B59AE5", secondary: "#5E468F" },
+  { name: "math",      primary: "#6FBFD9", secondary: "#3F7B8E" },
+  { name: "rose",      primary: "#F0617D", secondary: "#9C2D44" },
+  { name: "mkt",       primary: "#D9847E", secondary: "#8E4A45" },
 ];
 
 const BODIES = [
@@ -110,7 +114,13 @@ export function recipeFromSeed(seedStr: string): MinionRecipe {
 
 /** Helper: role 0/1/2 → label. */
 export const ROLE_LABELS = ["Spotter", "Solver", "Spectator"] as const;
-export const ROLE_COLORS = ["#00d4aa", "#ff6b35", "#a855f7"] as const;
+/* Aurora-tuned role colors:
+ *   Spotter    → peacock-bright (verified · settled semantics)
+ *   Solver     → persimmon-bright (active · contesting · pending)
+ *   Spectator  → r-ai lavender (markets · prediction)
+ * Index order preserved so on-chain role bytes still resolve to the
+ * intended semantic colour. */
+export const ROLE_COLORS = ["#7DD3F7", "#FFB849", "#B59AE5"] as const;
 
 /** Override the recipe primary color to match the role color. The seed
  *  still drives all other details — accessory, body, background — so two

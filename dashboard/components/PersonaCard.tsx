@@ -2,7 +2,20 @@
 
 import { useState } from "react";
 
-import { TheoremSigil } from "@/components/TheoremSigil";
+/* Persona-color override map: backend personas (aggressive-andy /
+ * careful-carl / balanced-bea) ship with legacy palette colors
+ * (#ff6b35 / #00d4aa / #C7A6FF). The frontend overrides them to the
+ * aurora aliases (persimmon-bright / peacock-bright / r-ai lavender)
+ * so persona cards read as the same brand system as the landing.
+ * Falls back to auroraColor(persona) for any slug not in the map. */
+const PERSONA_AURORA: Record<string, string> = {
+  "aggressive-andy": "#FFB849",
+  "careful-carl": "#7DD3F7",
+  "balanced-bea": "#B59AE5",
+};
+function auroraColor(p: { slug: string; color: string }): string {
+  return PERSONA_AURORA[p.slug] ?? p.color;
+}
 
 type Badge = {
   slug: string;
@@ -50,9 +63,9 @@ type Persona = {
 const EXPLORER = "https://chainscan-galileo.0g.ai";
 
 const RARITY_BORDER: Record<string, string> = {
-  common: "border-white/30",
-  uncommon: "border-cyan/60",
-  rare: "border-amber",
+  common: "border-bone/22",
+  uncommon: "border-peacock-bright/60",
+  rare: "border-persimmon-bright",
 };
 
 export function PersonaCard({
@@ -76,17 +89,18 @@ export function PersonaCard({
 
   return (
     <div
-      className="border bg-bg/60 backdrop-blur p-5 flex flex-col gap-3 relative overflow-hidden"
-      style={{ borderColor: persona.color }}
+      className="border bg-dusk-2/70 backdrop-blur p-5 flex flex-col gap-3 relative overflow-hidden"
+      style={{ borderColor: auroraColor(persona) }}
     >
-      {/* Persona sigil — derived from on-chain address, distinct per persona */}
-      <div className="absolute top-3 right-3 opacity-90" aria-hidden>
-        <TheoremSigil
-          hash={persona.address ?? "0x0"}
-          color={persona.color}
-          size={56}
-          label={`${persona.name} persona sigil`}
-        />
+      {/* Persona identity glyph — the one-emoji avatar from the design
+          system, set large in the corner. Replaces the noisy generative
+          TheoremSigil; the emoji is canonical persona identity (🔥 🧊 ⚖️)
+          per the AS-CERTAIN-TY skill rules and reads cleanly at any size. */}
+      <div
+        className="absolute top-3 right-3 text-[44px] leading-none select-none opacity-95 drop-shadow-[0_0_18px_rgba(0,0,0,0.4)]"
+        aria-hidden
+      >
+        {persona.emoji}
       </div>
 
       {/* Header */}
@@ -97,17 +111,17 @@ export function PersonaCard({
           rel="noopener noreferrer"
           className="block group"
         >
-          <div className="font-mono text-[10px] uppercase tracking-widest text-white/40">
+          <div className="font-mono text-[10px] uppercase tracking-widest text-bone/66">
             persona iNFT{persona.token_id !== null ? ` · #${persona.token_id}` : ""}
           </div>
           <div
             className="font-sans text-2xl font-light mt-0.5 group-hover:underline flex items-center gap-2"
-            style={{ color: persona.color }}
+            style={{ color: auroraColor(persona) }}
           >
             <span className="text-xl">{persona.emoji}</span>
             <span>{persona.name}</span>
           </div>
-          <div className="font-mono text-[10px] text-white/60 mt-0.5">
+          <div className="font-mono text-[10px] text-bone/66 mt-0.5">
             {persona.tagline}
           </div>
         </a>
@@ -127,17 +141,17 @@ export function PersonaCard({
         <Stat
           label="reputation"
           value={persona.reputation.toString()}
-          color={persona.color}
+          color={auroraColor(persona)}
         />
         <Stat
           label="settled wins"
           value={(stats?.settled_count ?? persona.solved_count).toString()}
-          color={persona.color}
+          color={auroraColor(persona)}
         />
         <Stat
           label="accept rate"
           value={stats ? `${acceptancePct}%` : "—"}
-          color={persona.color}
+          color={auroraColor(persona)}
           sub={stats ? `${stats.accepted}/${stats.attempts}` : ""}
         />
         <Stat
@@ -147,7 +161,7 @@ export function PersonaCard({
               ? `${stats.avg_kernel_seconds.toFixed(2)}s`
               : "—"
           }
-          color={persona.color}
+          color={auroraColor(persona)}
           sub={
             stats?.fastest_kernel_seconds != null
               ? `pb ${stats.fastest_kernel_seconds.toFixed(2)}s`
@@ -159,7 +173,7 @@ export function PersonaCard({
       {/* Domain affinities */}
       {stats && stats.domain_tags.length > 0 && (
         <div className="relative">
-          <div className="font-mono text-[9px] uppercase tracking-widest text-white/40 mb-1">
+          <div className="font-mono text-[9px] uppercase tracking-widest text-bone/66 mb-1">
             domain affinities
           </div>
           <div className="flex flex-wrap gap-1">
@@ -168,8 +182,8 @@ export function PersonaCard({
                 key={tag}
                 className="font-mono text-[10px] uppercase tracking-widest border px-2 py-0.5"
                 style={{
-                  borderColor: persona.color + "60",
-                  color: persona.color,
+                  borderColor: auroraColor(persona) + "60",
+                  color: auroraColor(persona),
                 }}
                 title={`${count} accepted submission${count === 1 ? "" : "s"} on ${tag}`}
               >
@@ -182,13 +196,13 @@ export function PersonaCard({
 
       {/* Axiom breadth bar */}
       <div className="relative">
-        <div className="font-mono text-[9px] uppercase tracking-widest text-white/40 mb-1">
+        <div className="font-mono text-[9px] uppercase tracking-widest text-bone/66 mb-1">
           axiom whitelist breadth
         </div>
         <div className="h-1 bg-line">
           <div
             className="h-full"
-            style={{ width: `${breadthPct}%`, background: persona.color }}
+            style={{ width: `${breadthPct}%`, background: auroraColor(persona) }}
           />
         </div>
       </div>
@@ -203,11 +217,11 @@ export function PersonaCard({
       />
 
       {/* Footer */}
-      <div className="border-t border-line/50 pt-3 mt-1 relative">
-        <div className="font-mono text-[9px] uppercase tracking-widest text-white/40">
+      <div className="border-t border-bone/10 pt-3 mt-1 relative">
+        <div className="font-mono text-[9px] uppercase tracking-widest text-bone/66">
           address
         </div>
-        <div className="font-mono text-[10px] text-white/85 truncate">
+        <div className="font-mono text-[10px] text-bone truncate">
           {persona.address ? short(persona.address, 10, 8) : "—"}
         </div>
       </div>
@@ -254,11 +268,11 @@ function TrophyShelf({
   if (earned.length === 0 && locked.length === 0) return null;
 
   return (
-    <div className="relative border-t border-line/50 pt-3">
+    <div className="relative border-t border-bone/10 pt-3">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="font-mono text-[9px] uppercase tracking-widest text-white/40 hover:text-white/70 flex items-center justify-between w-full"
+        className="font-mono text-[9px] uppercase tracking-widest text-bone/66 hover:text-bone/66 flex items-center justify-between w-full"
       >
         <span>
           trophy shelf · {earned.length} earned · {locked.length} locked
@@ -278,7 +292,7 @@ function TrophyShelf({
                   className={`font-mono text-[10px] uppercase tracking-widest border px-2 py-0.5 transition-colors disabled:opacity-50 ${
                     localWorn.has(b.slug)
                       ? RARITY_BORDER[b.rarity]
-                      : "border-line/50 text-white/40 hover:text-white/70"
+                      : "border-bone/10 text-bone/66 hover:text-bone/66"
                   }`}
                   title={
                     localWorn.has(b.slug)
@@ -296,7 +310,7 @@ function TrophyShelf({
               {locked.map((b) => (
                 <span
                   key={b.slug}
-                  className="font-mono text-[10px] uppercase tracking-widest border border-line/30 text-white/30 px-2 py-0.5 grayscale"
+                  className="font-mono text-[10px] uppercase tracking-widest border border-bone/10 text-bone/42 px-2 py-0.5 grayscale"
                   title={`Locked: ${b.description}`}
                 >
                   🔒 {b.name}
@@ -334,14 +348,14 @@ function Stat({
 }) {
   return (
     <div className="flex flex-col">
-      <span className="font-mono text-[9px] uppercase tracking-widest text-white/40">
+      <span className="font-mono text-[9px] uppercase tracking-widest text-bone/66">
         {label}
       </span>
       <span className="font-mono text-sm tabular-nums" style={{ color }}>
         {value}
       </span>
       {sub && (
-        <span className="font-mono text-[9px] text-white/40 tabular-nums">{sub}</span>
+        <span className="font-mono text-[9px] text-bone/66 tabular-nums">{sub}</span>
       )}
     </div>
   );

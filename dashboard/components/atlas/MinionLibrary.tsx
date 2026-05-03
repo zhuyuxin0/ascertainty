@@ -126,7 +126,7 @@ export function MinionLibrary({
             transition={{ duration: 0.3 }}
             className="border border-line border-b-0 bg-bg/90 backdrop-blur max-h-[60vh] overflow-y-auto w-[min(96vw,1080px)]"
           >
-            <div className="flex items-center justify-between px-5 py-2 border-b border-line/60">
+            <div className="flex items-center justify-between px-5 py-2 border-b border-bone/10">
               <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-cyan/70">
                 library · {personas.length} persona · {owned.length} minted
               </span>
@@ -142,7 +142,7 @@ export function MinionLibrary({
                 )}
                 {!isConnected && (
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-[9px] uppercase tracking-widest text-white/40">
+                    <span className="font-mono text-[9px] uppercase tracking-widest text-bone/66">
                       connect to mint
                     </span>
                     <ConnectButton />
@@ -151,7 +151,7 @@ export function MinionLibrary({
                 <button
                   type="button"
                   onClick={() => setOpen(false)}
-                  className="font-mono text-xs text-white/40 hover:text-cyan"
+                  className="font-mono text-xs text-bone/66 hover:text-cyan"
                 >
                   ↓
                 </button>
@@ -160,7 +160,7 @@ export function MinionLibrary({
 
             {/* Persona row (system-minted Andy/Carl/Bea) */}
             <div className="px-4 pt-3">
-              <div className="font-mono text-[9px] uppercase tracking-widest text-white/40 mb-1.5">
+              <div className="font-mono text-[9px] uppercase tracking-widest text-bone/66 mb-1.5">
                 persona iNFTs · seeded
               </div>
               <div className="flex gap-3 overflow-x-auto pb-1">
@@ -179,7 +179,7 @@ export function MinionLibrary({
             {(owned.length > 0 || isConnected) && (
               <div className="px-4 pt-3 pb-4">
                 <div className="flex items-center justify-between mb-1.5">
-                  <div className="font-mono text-[9px] uppercase tracking-widest text-white/40">
+                  <div className="font-mono text-[9px] uppercase tracking-widest text-bone/66">
                     your minions · {owned.length} minted
                   </div>
                   {pageCount > 1 && (
@@ -211,7 +211,7 @@ export function MinionLibrary({
                   )}
                 </div>
                 {owned.length === 0 ? (
-                  <div className="border border-dashed border-line/60 p-4 font-mono text-[10px] text-white/40 text-center">
+                  <div className="border border-dashed border-bone/10 p-4 font-mono text-[10px] text-bone/66 text-center">
                     no minions yet — click ✨ mint minion above
                   </div>
                 ) : (
@@ -251,7 +251,7 @@ function MinionThumb({
       style={{ borderColor: persona.color }}
     >
       <div className="flex items-center justify-between">
-        <span className="font-mono text-[9px] uppercase tracking-widest text-white/40">
+        <span className="font-mono text-[9px] uppercase tracking-widest text-bone/66">
           token #{persona.token_id ?? "—"}
         </span>
         {persona.address && (
@@ -259,7 +259,7 @@ function MinionThumb({
             href={`${EXPLORER}/address/${persona.address}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="font-mono text-[9px] text-white/40 hover:text-cyan"
+            className="font-mono text-[9px] text-bone/66 hover:text-cyan"
           >
             ↗
           </a>
@@ -277,13 +277,13 @@ function MinionThumb({
       </div>
       <div className="grid grid-cols-2 gap-1.5 mt-1 text-[9px] font-mono">
         <div>
-          <div className="text-white/30 uppercase tracking-widest">rep</div>
+          <div className="text-bone/42 uppercase tracking-widest">rep</div>
           <div className="tabular-nums" style={{ color: persona.color }}>
             {persona.reputation}
           </div>
         </div>
         <div>
-          <div className="text-white/30 uppercase tracking-widest">solved</div>
+          <div className="text-bone/42 uppercase tracking-widest">solved</div>
           <div className="tabular-nums" style={{ color: persona.color }}>
             {persona.solved_count}
           </div>
@@ -301,7 +301,7 @@ function MinionThumb({
       <button
         type="button"
         onClick={() => onSelectPersona?.(persona.slug)}
-        className="font-mono text-[9px] uppercase tracking-widest text-white/40 hover:text-cyan mt-1 text-left"
+        className="font-mono text-[9px] uppercase tracking-widest text-bone/66 hover:text-cyan mt-1 text-left"
       >
         inspect →
       </button>

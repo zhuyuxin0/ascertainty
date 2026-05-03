@@ -141,25 +141,25 @@ export default function AtlasPage() {
             height={28}
             priority
           />
-          <span className="font-display text-[26px] leading-none text-cyan tracking-[0.01em] group-hover:text-glow transition-colors">
+          <span className="font-display text-[26px] leading-none text-bone tracking-[0.01em] group-hover:text-peacock-bright transition-colors">
             Ascertainty
           </span>
-          <span className="h-[5px] w-[5px] rounded-full bg-amber self-end mb-1" aria-hidden />
+          <span className="h-[5px] w-[5px] rounded-full bg-persimmon-bright self-end mb-1" aria-hidden />
         </button>
-        <span className="pointer-events-none font-mono text-[10px] uppercase tracking-[0.18em] text-white/45 flex items-baseline gap-1.5 leading-none mt-1.5">
-          <span className="text-white/35">atlas</span>
-          <span className="text-white/15">⟫</span>
-          <span className={bandLock ? "text-amber" : "text-cyan/75"}>
+        <span className="pointer-events-none font-mono text-[10px] uppercase tracking-[0.18em] text-bone/66 flex items-baseline gap-1.5 leading-none mt-1.5">
+          <span className="text-bone/42">atlas</span>
+          <span className="text-bone/22">⟫</span>
+          <span className={bandLock ? "text-persimmon-bright" : "text-peacock-bright/80"}>
             {displayBand}
           </span>
           {bandLock && (
-            <span className="text-amber font-bold ml-0.5 text-[9px]">
+            <span className="text-persimmon-bright font-bold ml-0.5 text-[9px]">
               ◉
             </span>
           )}
           {activeRegion && (
             <>
-              <span className="text-white/15">⟫</span>
+              <span className="text-bone/22">⟫</span>
               <span
                 style={{ color: `rgb(${activeRegion.color.join(",")})` }}
               >
@@ -169,14 +169,14 @@ export default function AtlasPage() {
           )}
           {selectedModel && (
             <>
-              <span className="text-white/15">⟫</span>
-              <span className="text-cyan">{selectedModel.name}</span>
+              <span className="text-bone/22">⟫</span>
+              <span className="text-peacock-bright">{selectedModel.name}</span>
             </>
           )}
           {selectedMarket && !selectedModel && (
             <>
-              <span className="text-white/15">⟫</span>
-              <span className="text-amber">
+              <span className="text-bone/22">⟫</span>
+              <span className="text-persimmon-bright">
                 {selectedMarket.question.slice(0, 30)}
                 {selectedMarket.question.length > 30 ? "…" : ""}
               </span>
@@ -195,8 +195,8 @@ export default function AtlasPage() {
             setAgentOpen((v) => !v);
             setBountiesOpen(false);
           }}
-          className={`font-mono text-[10px] uppercase tracking-widest hover:text-cyan transition-colors ${
-            agentOpen ? "text-cyan" : "text-white/50"
+          className={`font-mono text-[10px] uppercase tracking-widest hover:text-peacock-bright transition-colors ${
+            agentOpen ? "text-peacock-bright" : "text-bone/66"
           }`}
         >
           agent
@@ -207,15 +207,15 @@ export default function AtlasPage() {
             setBountiesOpen((v) => !v);
             setAgentOpen(false);
           }}
-          className={`font-mono text-[10px] uppercase tracking-widest hover:text-cyan transition-colors ${
-            bountiesOpen ? "text-cyan" : "text-white/50"
+          className={`font-mono text-[10px] uppercase tracking-widest hover:text-peacock-bright transition-colors ${
+            bountiesOpen ? "text-peacock-bright" : "text-bone/66"
           }`}
         >
           bounties
         </button>
         <Link
           href="https://github.com/zhuyuxin0/ascertainty"
-          className="font-mono text-[10px] uppercase tracking-widest text-white/50 hover:text-cyan"
+          className="font-mono text-[10px] uppercase tracking-widest text-bone/66 hover:text-peacock-bright"
         >
           github
         </Link>
@@ -227,8 +227,8 @@ export default function AtlasPage() {
       {/* Band-lock toggle — top center. Each band is rendered with a
           tiny indicator dot under the active band so the user has a
           stable "you are here" mark even when no band is locked. */}
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 pointer-events-auto flex items-center gap-1 border border-line bg-bg/75 backdrop-blur px-2 py-1.5 shadow-[0_8px_32px_-8px_rgba(0,212,170,0.2)]">
-        <span className="font-mono text-[9px] uppercase tracking-[0.25em] text-white/40 px-2">
+      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 pointer-events-auto flex items-center gap-1 border border-bone/10 bg-bg/75 backdrop-blur px-2 py-1.5 shadow-[0_8px_32px_-8px_rgba(125,211,247,0.2)]">
+        <span className="font-mono text-[9px] uppercase tracking-[0.25em] text-bone/66 px-2">
           band
         </span>
         {(["cosmos", "domain", "entity", "detail"] as const).map((b) => {
@@ -241,10 +241,10 @@ export default function AtlasPage() {
               onClick={() => setBandLock(locked ? null : b)}
               className={`relative font-mono text-[10px] uppercase tracking-[0.18em] px-2.5 py-1 transition-all ${
                 locked
-                  ? "border border-cyan text-cyan bg-cyan/10 shadow-[0_0_12px_-2px_rgba(0,212,170,0.5)]"
+                  ? "border border-peacock-bright text-peacock-bright bg-peacock-bright/10 shadow-[0_0_12px_-2px_rgba(125,211,247,0.5)]"
                   : active
-                    ? "text-cyan/80 hover:text-cyan"
-                    : "text-white/40 hover:text-white/70"
+                    ? "text-peacock-bright/80 hover:text-peacock-bright"
+                    : "text-bone/42 hover:text-bone/66"
               }`}
               title={
                 locked
@@ -257,7 +257,7 @@ export default function AtlasPage() {
               {active && !locked && (
                 <span
                   aria-hidden
-                  className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-cyan/80"
+                  className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-peacock-bright/80"
                 />
               )}
             </button>
@@ -270,7 +270,7 @@ export default function AtlasPage() {
           you're looking at. Live regions get a quietly pulsing dot. */}
       {activeRegion && (
         <div
-          className="absolute bottom-6 right-6 z-30 border border-line bg-bg/85 backdrop-blur pointer-events-none max-w-xs flex"
+          className="absolute bottom-6 right-6 z-30 border border-bone/10 bg-bg/85 backdrop-blur pointer-events-none max-w-xs flex"
           style={{
             boxShadow: `0 16px 48px -16px rgb(${activeRegion.color.join(",")})`,
           }}
@@ -284,25 +284,25 @@ export default function AtlasPage() {
             <div
               className="font-mono text-[10px] uppercase tracking-[0.22em] mb-1 flex items-center gap-1.5"
               style={{
-                color: activeRegion.status === "live" ? "#00d4aa" : "#7d8298",
+                color: activeRegion.status === "live" ? "#7DD3F7" : "#7d8298",
               }}
             >
               {activeRegion.status === "live" && (
                 <span className="relative flex h-1.5 w-1.5">
-                  <span className="absolute inline-flex h-full w-full rounded-full bg-cyan animate-ping opacity-60" />
-                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-cyan" />
+                  <span className="absolute inline-flex h-full w-full rounded-full bg-peacock-bright animate-ping opacity-60" />
+                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-peacock-bright" />
                 </span>
               )}
               {activeRegion.status === "live" ? "live region" : "placeholder"}
             </div>
-            <div className="font-display text-[22px] text-white leading-tight">
+            <div className="font-display text-[22px] text-bone leading-tight">
               {activeRegion.name}
             </div>
-            <div className="font-mono text-[10px] text-white/55 mt-1 leading-relaxed">
+            <div className="font-mono text-[10px] text-bone/66 mt-1 leading-relaxed">
               {activeRegion.subtitle}
             </div>
             {activeRegion.status === "placeholder" && (
-              <div className="font-mono text-[10px] text-amber/70 mt-2 uppercase tracking-widest">
+              <div className="font-mono text-[10px] text-persimmon-bright/80 mt-2 uppercase tracking-widest">
                 {activeRegion.comingWhen}
               </div>
             )}
@@ -312,20 +312,20 @@ export default function AtlasPage() {
 
       {/* Interaction hint — bottom-left. Three tiny rows with a small
           symbol column so the eye groups by symbol instead of stripe. */}
-      <div className="absolute bottom-6 left-6 z-20 font-mono text-[9px] uppercase tracking-[0.22em] text-white/35 pointer-events-none leading-[1.6]">
+      <div className="absolute bottom-6 left-6 z-20 font-mono text-[9px] uppercase tracking-[0.22em] text-bone/42 pointer-events-none leading-[1.6]">
         <div className="flex items-baseline gap-2">
-          <span className="text-white/50">drag</span>
-          <span className="text-white/20">·</span>
+          <span className="text-bone/66">drag</span>
+          <span className="text-bone/22">·</span>
           <span>rotate</span>
         </div>
         <div className="flex items-baseline gap-2">
-          <span className="text-white/50">⌘ / ctrl + drag</span>
-          <span className="text-white/20">·</span>
+          <span className="text-bone/66">⌘ / ctrl + drag</span>
+          <span className="text-bone/22">·</span>
           <span>pan</span>
         </div>
         <div className="flex items-baseline gap-2">
-          <span className="text-white/50">scroll</span>
-          <span className="text-white/20">·</span>
+          <span className="text-bone/66">scroll</span>
+          <span className="text-bone/22">·</span>
           <span>zoom</span>
         </div>
       </div>
@@ -337,10 +337,10 @@ export default function AtlasPage() {
         <button
           type="button"
           onClick={() => setLassoActive(true)}
-          className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 pointer-events-auto border border-cyan/60 bg-bg/80 backdrop-blur px-4 py-2 font-mono text-[10px] uppercase tracking-[0.22em] text-cyan hover:bg-cyan hover:text-bg transition-all shadow-[0_8px_32px_-8px_rgba(0,212,170,0.4)] hover:shadow-[0_8px_32px_-4px_rgba(0,212,170,0.7)]"
+          className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 pointer-events-auto border border-peacock-bright/60 bg-bg/80 backdrop-blur px-4 py-2 font-mono text-[10px] uppercase tracking-[0.22em] text-peacock-bright hover:bg-peacock-bright hover:text-bg transition-all shadow-[0_8px_32px_-8px_rgba(125,211,247,0.4)] hover:shadow-[0_8px_32px_-4px_rgba(125,211,247,0.7)]"
           title="lasso a region of nodes to stake on"
         >
-          <span className="text-cyan/60 mr-2">⬚</span>draw region<span className="text-white/30 mx-2">·</span>stake
+          <span className="text-peacock-bright/60 mr-2">⬚</span>draw region<span className="text-bone/42 mx-2">·</span>stake
         </button>
       )}
 

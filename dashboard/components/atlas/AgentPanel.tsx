@@ -97,17 +97,17 @@ export function AgentPanel({
           animate={{ x: 0 }}
           exit={{ x: "100%" }}
           transition={{ type: "spring", damping: 28, stiffness: 220 }}
-          className="fixed top-0 right-0 h-full z-30 pointer-events-auto w-[min(440px,92vw)] border-l border-line bg-panel/95 backdrop-blur shadow-2xl flex flex-col"
+          className="fixed top-0 right-0 h-full z-30 pointer-events-auto w-[min(440px,92vw)] border-l border-bone/10 bg-dusk/95 backdrop-blur shadow-2xl flex flex-col"
         >
           {/* Header */}
-          <div className="flex items-center justify-between px-5 py-3 border-b border-line/60">
-            <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-cyan/70">
+          <div className="flex items-center justify-between px-5 py-3 border-b border-bone/10">
+            <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-peacock-bright/80">
               agent · live status
             </p>
             <button
               type="button"
               onClick={onClose}
-              className="font-mono text-base text-white/40 hover:text-cyan leading-none"
+              className="font-mono text-base text-bone/66 hover:text-peacock-bright leading-none"
               aria-label="close panel"
             >
               ✕
@@ -117,7 +117,7 @@ export function AgentPanel({
           {/* Body */}
           <div className="flex-1 overflow-y-auto p-5 space-y-5">
             {error && (
-              <div className="border border-amber/40 bg-amber/10 p-3 font-mono text-[11px] text-amber">
+              <div className="border border-persimmon-bright/40 bg-persimmon-bright/10 p-3 font-mono text-[11px] text-persimmon-bright">
                 backend unreachable: {error}
               </div>
             )}
@@ -125,7 +125,7 @@ export function AgentPanel({
             {/* Persona iNFTs */}
             {personas.length > 0 && (
               <div>
-                <p className="font-mono text-[9px] uppercase tracking-widest text-white/40 mb-2">
+                <p className="font-mono text-[9px] uppercase tracking-widest text-bone/66 mb-2">
                   persona iNFTs · {personas.length}
                 </p>
                 <div className="grid grid-cols-3 gap-2">
@@ -134,7 +134,7 @@ export function AgentPanel({
                       key={p.slug}
                       type="button"
                       onClick={() => onSelectPersona?.(p.slug)}
-                      className="border bg-bg/40 p-2 text-left hover:bg-bg/60 transition-colors"
+                      className="border bg-dusk-2/60 p-2 text-left hover:bg-dusk-2/80 transition-colors"
                       style={{ borderColor: p.color }}
                     >
                       <div
@@ -146,7 +146,7 @@ export function AgentPanel({
                       </div>
                       <div className="grid grid-cols-2 gap-1 mt-2 font-mono text-[9px]">
                         <div>
-                          <div className="text-white/30 uppercase tracking-widest">
+                          <div className="text-bone/42 uppercase tracking-widest">
                             rep
                           </div>
                           <div
@@ -157,7 +157,7 @@ export function AgentPanel({
                           </div>
                         </div>
                         <div>
-                          <div className="text-white/30 uppercase tracking-widest">
+                          <div className="text-bone/42 uppercase tracking-widest">
                             solved
                           </div>
                           <div
@@ -175,13 +175,13 @@ export function AgentPanel({
             )}
 
             {status === null ? (
-              <div className="border border-dashed border-line/60 p-4 font-mono text-[11px] text-white/40 text-center">
+              <div className="border border-dashed border-bone/10 p-4 font-mono text-[11px] text-bone/66 text-center">
                 no agent status
               </div>
             ) : (
               <>
                 {/* 0G Chain pillar */}
-                <Pillar title="0G Chain · Galileo" color="#00d4aa">
+                <Pillar title="0G Chain · Galileo" color="#7DD3F7">
                   {status.chain ? (
                     <>
                       <KV k="network" v={status.chain.network} />
@@ -194,7 +194,7 @@ export function AgentPanel({
                               href={`${EXPLORER}/address/${status.operator}`}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="font-hash text-white/85 hover:text-cyan"
+                              className="font-hash text-bone hover:text-peacock-bright"
                             >
                               {short(status.operator, 8, 6)} ↗
                             </a>
@@ -210,7 +210,7 @@ export function AgentPanel({
                               href={`${EXPLORER}/address/${a}`}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="font-hash text-white/85 hover:text-cyan"
+                              className="font-hash text-bone hover:text-peacock-bright"
                             >
                               {short(a, 8, 6)} ↗
                             </a>
@@ -244,7 +244,7 @@ export function AgentPanel({
                     <KV
                       k="storage root"
                       v={
-                        <span className="font-hash text-white/60">
+                        <span className="font-hash text-bone/66">
                           {short(status.inft.storage_root_hash, 10, 6)}
                         </span>
                       }
@@ -253,7 +253,7 @@ export function AgentPanel({
                 </Pillar>
 
                 {/* 0G Storage */}
-                <Pillar title="0G Storage" color="#C7A6FF">
+                <Pillar title="0G Storage" color="#B59AE5">
                   <KV
                     k="status"
                     v={
@@ -265,15 +265,15 @@ export function AgentPanel({
                       />
                     }
                   />
-                  <p className="font-mono text-[10px] text-white/40 leading-relaxed">
+                  <p className="font-mono text-[10px] text-bone/66 leading-relaxed">
                     every accepted attestation uploads to 0G; the resulting
                     Merkle root anchors on-chain via{" "}
-                    <code className="text-cyan/80">submitProof</code>.
+                    <code className="text-peacock-bright">submitProof</code>.
                   </p>
                 </Pillar>
 
                 {/* KeeperHub */}
-                <Pillar title="KeeperHub MCP" color="#ff6b35">
+                <Pillar title="KeeperHub MCP" color="#FFB849">
                   <KV
                     k="status"
                     v={
@@ -292,12 +292,12 @@ export function AgentPanel({
                   {status.keeperhub.recent_executions.slice(0, 3).map((ex) => (
                     <div
                       key={ex.id}
-                      className="font-mono text-[10px] flex items-baseline justify-between border-b border-line/40 py-1"
+                      className="font-mono text-[10px] flex items-baseline justify-between border-b border-bone/10 py-1"
                     >
-                      <span className="text-white/60">
+                      <span className="text-bone/66">
                         bounty #{ex.bounty_id ?? "?"} · {ex.status}
                       </span>
-                      <span className="text-white/40">
+                      <span className="text-bone/66">
                         {ex.execution_id ? short(ex.execution_id, 6, 4) : "—"}
                       </span>
                     </div>
@@ -322,7 +322,7 @@ function Pillar({
   children: React.ReactNode;
 }) {
   return (
-    <div className="border border-line/70 bg-bg/30 p-3">
+    <div className="border border-bone/10 bg-dusk-2/40 p-3">
       <p
         className="font-mono text-[10px] uppercase tracking-[0.25em] mb-2"
         style={{ color }}
@@ -337,10 +337,10 @@ function Pillar({
 function KV({ k, v }: { k: string; v: React.ReactNode }) {
   return (
     <div className="grid grid-cols-[100px_1fr] gap-2 items-baseline font-mono text-[11px]">
-      <span className="text-white/40 uppercase tracking-widest text-[9px]">
+      <span className="text-bone/66 uppercase tracking-widest text-[9px]">
         {k}
       </span>
-      <span className="text-white/85">{v}</span>
+      <span className="text-bone">{v}</span>
     </div>
   );
 }
@@ -350,8 +350,8 @@ function Pill({ ok, text }: { ok: boolean; text: string }) {
     <span
       className={`inline-block font-mono text-[9px] uppercase tracking-widest border px-2 py-0.5 ${
         ok
-          ? "border-cyan/60 bg-cyan/10 text-cyan"
-          : "border-white/20 bg-white/5 text-white/40"
+          ? "border-peacock-bright/60 bg-peacock-bright/10 text-peacock-bright"
+          : "border-white/20 bg-white/5 text-bone/66"
       }`}
     >
       {text}
