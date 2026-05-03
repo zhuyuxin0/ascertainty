@@ -8,7 +8,7 @@ import { AgentPanel } from "@/components/atlas/AgentPanel";
 import { ASCertaintyOverlay } from "@/components/atlas/ASCertaintyOverlay";
 import { AtlasWalkthrough } from "@/components/atlas/AtlasWalkthrough";
 import { BountiesPanel } from "@/components/atlas/BountiesPanel";
-import { Logomark } from "@/components/atlas/Logomark";
+import Image from "next/image";
 import { MinionLibrary } from "@/components/atlas/MinionLibrary";
 import { MintMinionDialog } from "@/components/atlas/MintMinionDialog";
 import { ModelSidePanel, MarketSidePanel } from "@/components/atlas/SidePanel";
@@ -128,11 +128,23 @@ export default function AtlasPage() {
           className="pointer-events-auto flex items-center gap-2.5 group"
           title="return to cosmos overview"
           aria-label="return to cosmos overview"
+          style={{ viewTransitionName: "brand" }}
         >
-          <Logomark size={28} />
+          {/* Cardinal evening variant — lit persimmon square + bone crosshair
+              + jade dot, tuned for the dusk cosmos field. Same brand mark
+              that lives in the landing/claim cream chrome; the
+              view-transition-name "brand" carries it across pages. */}
+          <Image
+            src="/logo/cardinal-evening.svg"
+            alt=""
+            width={28}
+            height={28}
+            priority
+          />
           <span className="font-display text-[26px] leading-none text-cyan tracking-[0.01em] group-hover:text-glow transition-colors">
             Ascertainty
           </span>
+          <span className="h-[5px] w-[5px] rounded-full bg-amber self-end mb-1" aria-hidden />
         </button>
         <span className="pointer-events-none font-mono text-[10px] uppercase tracking-[0.18em] text-white/45 flex items-baseline gap-1.5 leading-none mt-1.5">
           <span className="text-white/35">atlas</span>
