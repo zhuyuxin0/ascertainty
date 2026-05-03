@@ -6,11 +6,13 @@ transport (JSON-RPC 2.0 over POST). Authenticates with our org-scoped
 the header; the live API only accepts `Authorization: Bearer kh_<key>`
 (see FEEDBACK.md).
 
-Used from `/bounty/submit` on the accept path: after the attestation is
-built, we trigger the configured KeeperHub workflow to (in production)
-post the on-chain settlement using KeeperHub's hosted Turnkey wallet.
-For the demo we run BOTH this and our own claim_task — the on-chain
-contract is idempotent so duplicate claims revert harmlessly.
+Used from `settle_task` once a bounty's challenge window has expired:
+we trigger the configured KeeperHub workflow with `{"bountyId": <id>}`,
+and KH's hosted Turnkey wallet (which lives on chain 16602 since the
+Week 17 update added 0G support) signs and broadcasts
+`BountyFactory.settleBounty(bountyId)`. The on-chain function is
+permissionless and idempotent, so an operator-wallet fallback in the
+same task is safe — duplicate calls revert with "not settleable".
 """
 from __future__ import annotations
 
@@ -112,10 +114,13 @@ class KeeperHubMcp:
     async def list_workflows(self, limit: int = 50, offset: int = 0) -> list[dict]:
         return await self.call_tool("list_workflows", {"limit": limit, "offset": offset})
 
-    async def execute_workflow(self, workflow_id: str, inputs: dict | None = None) -> dict:
+    async def execute_workflow(self, workflow_id: str, input: dict | None = None) -> dict:
+        # KH MCP execute_workflow takes `input` (singular); the trigger node
+        # surfaces these fields under its output, accessible via templates
+        # like {{@<triggerNodeId>:<Label>.<field>}} in downstream actions.
         args: dict[str, Any] = {"workflowId": workflow_id}
-        if inputs:
-            args["inputs"] = inputs
+        if input:
+            args["input"] = input
         return await self.call_tool("execute_workflow", args)
 
     async def get_execution_status(self, execution_id: str) -> dict:
@@ -126,7 +131,7 @@ class KeeperHubMcp:
 
 
 async def execute_oneoff(
-    workflow_id: str, inputs: dict | None = None
+    workflow_id: str, input: dict | None = None
 ) -> Optional[dict]:
     """Spin up a client, initialize, execute, close. Returns the execute_workflow
     result dict or None if `KEEPERHUB_API_KEY` not configured."""
@@ -136,7 +141,7 @@ async def execute_oneoff(
     mcp = KeeperHubMcp(api_key)
     try:
         await mcp.initialize()
-        return await mcp.execute_workflow(workflow_id, inputs)
+        return await mcp.execute_workflow(workflow_id, input)
     except Exception as e:
         log.warning("keeperhub: execute_workflow failed: %s", e)
         return None

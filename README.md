@@ -92,9 +92,10 @@ See [`backend/contract_addresses.json`](backend/contract_addresses.json).
 | Contract | Address |
 |---|---|
 | MockUSDC | `0x8D53B5b599caA7205fB869A14Dd7141c3866010a` |
-| SolverRegistry | `0x6E5CEb3Ac85dA96479A0C080E7fB8D5762551A32` |
-| BountyFactory | `0x11E351EA4Ec6F9163916c1941320a0F6d2b80C1c` |
+| SolverRegistry | `0xe834d3fDACa5D9091D3c32F74c968e9469Ae513A` |
+| BountyFactory | `0x2B1cBdC4FBF77Ca66483F840E7D9C626b7D1563f` |
 | AgentNFT | `0x0cf5c9dd2CF3E48b2E1078995289d6b0690f1105` |
+| MinionNFT | `0x93DA9E9cF2f1647BD8f6dEB894CB34f8bF33e897` |
 
 Block explorer: https://chainscan-galileo.0g.ai
 
@@ -109,17 +110,27 @@ Block explorer: https://chainscan-galileo.0g.ai
 | **0G Compute** | TEE-verified explanations via Sealed Inference (`a0g.get_openai_async_client()`). Required for live demo bounties; production retains a graceful fallback path so a transient endpoint outage never blocks settlement. |
 | **0G iNFT (ERC-7857-inspired)** | Multiple persona iNFTs minted by the operator wallet, each with a distinct identity blob root on 0G Storage; metadata + cards visible at [/agent](https://ascertainty.xyz/agent). |
 
-### KeeperHub ($4,500) — both integration surfaces
+### KeeperHub ($4,500) — production settlement signer
 
-- **MCP workflow trigger** — every `/bounty/submit` accept fires
-  `execute_workflow` on workflow `mqfy9h0zkedx1y4dbtrs5` ("Ascertainty
-  Settlement Monitor"), created programmatically via the MCP
-  `create_workflow` tool. Executions logged to `kh_executions` table,
-  surfaced on `/agent`.
-- **Documentation feedback** — see [FEEDBACK.md](FEEDBACK.md): seven
-  verified findings including the missing wallet-discovery REST
-  endpoint and the 0G-Galileo chain-coverage gap that blocked moving
-  the on-chain claim signer to KeeperHub's hosted wallet.
+- **KH is the Settlement Authority.** `BountyFactory.settleBounty(uint256)`
+  is permissionless on-chain (anyone can call it after the challenge
+  window expires; USDC always flows to the recorded solver, never to
+  the caller). When `KEEPERHUB_WORKFLOW_ID` is configured, the
+  backend's `settle_task` triggers the KH workflow at the moment a
+  bounty becomes settleable, and KH's hosted Turnkey wallet on chain
+  16602 (0G support landed in Week 17, May 2 2026) signs and
+  broadcasts the `settleBounty` tx. The operator wallet is the
+  fallback path so KH downtime can never strand a payout — the same
+  on-chain function, called by either signer, idempotently advances
+  the bounty to `Status.Settled` and emits `BountySettled`. Workflow
+  set up via `python -m scripts.setup_keeperhub_workflow`. Executions
+  logged to `kh_executions`, surfaced on `/agent` as the **Settlement
+  Authority** card with the live KH wallet address linked to the
+  Galileo explorer.
+- **Documentation feedback** — see [FEEDBACK.md](FEEDBACK.md): six
+  verified findings (a seventh, the chain-coverage gap, was resolved
+  by KH's Week 17 0G support announcement and is preserved in a
+  "Resolved during the hackathon" section).
 
 ## Architecture
 
@@ -141,16 +152,22 @@ Block explorer: https://chainscan-galileo.0g.ai
                   │      restores solver)│         │  Three.js race viz │
                   │  ⑤ KH execute_wf     │         └────────────────────┘
                   └──────────────────────┘
-                  ┌──────────────────────┐
-   claim_task ──▶ │  BountyFactory       │  after (challenge_window_s)
-   (every 30s)    │  .claimBounty(id)    │  → BountyClaimed → finish event
-                  └──────────────────────┘
+                  ┌────────────────────────────────────────────────┐
+   settle_task ──▶│  KH MCP execute_workflow ─▶  KH Turnkey wallet │
+   (every 30s)    │  (chain 16602, signs+sends settleBounty)       │
+                  │     ↓ on KH failure: operator-wallet fallback  │
+                  │  BountyFactory.settleBounty(id) — permissionless│
+                  │  → BountySettled(bountyId, solver, amount, settler)
+                  │  → watcher → finish race event → dashboard      │
+                  └────────────────────────────────────────────────┘
 ```
 
 Background tasks running on the production backend: `watcher`
 (polling on-chain BountyFactory events every 5s; safe race window —
 the contract enforces atomic `Status.Open → Submitted` transition),
-`claim_task` (auto-claim after challenge window every 30s),
+`settle_task` (every 30s: drives the permissionless `settleBounty()`
+keeper path, KH-first with operator fallback; replaces the legacy
+per-persona `claim_task`),
 `cctp_watcher` (Alchemy WS for mainnet stablecoin flow analytics, not
 contract events), `telegram_bot` (long-poll for `/bounties`,
 `/status`, `/race` commands), `inft.init` (idempotent mint of the
@@ -194,7 +211,7 @@ ascertainty/
 │   ├── bounty_manager.py + db.py
 │   ├── verifier.py + spec.py + attestation.py
 │   ├── og_chain.py + og_storage.py + og_compute.py + inft.py
-│   ├── publisher.py + watcher.py + claim_task.py
+│   ├── publisher.py + watcher.py + settle_task.py
 │   ├── keeperhub.py + telegram_bot.py + cctp_watcher.py
 │   └── flow_classifier.py + entity_labels.json     ← Enstabler port
 ├── cli/
@@ -242,6 +259,8 @@ Night HDRI (CC0), Anderson Mancini's lens flare (CC0).
   branchFactor`, theorem complexity → depth, `mathlib_sha` first 4
   bytes → seed. True dependency-graph extraction from Lean4 proof
   terms would land in Phase 2 alongside the Mathlib provisioning.
-- **0G Galileo not yet on KeeperHub's web3 chain list.** Forces the
-  on-chain settlement signer to remain the operator wallet rather than
-  KH's hosted Turnkey wallet (FEEDBACK.md Claim 7).
+- **Solver-side claim flow** (`claimBounty`) is kept alongside the
+  permissionless `settleBounty` for clients that want to self-claim
+  without going through the keeper. Functionally equivalent post
+  challenge-window; surfaces in the contract as a thin solver-friendly
+  wrapper.

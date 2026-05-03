@@ -44,3 +44,7 @@ Thumbs.db
 # IDE
 .vscode/settings.json
 *.swp
+
+# Design system handoff (reference materials, not project source)
+Ascertainty Design System.zip
+design-system-handoff/

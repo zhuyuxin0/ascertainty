@@ -71,6 +71,13 @@ BOUNTY_FACTORY_ABI: list[dict[str, Any]] = [
     },
     {
         "type": "function",
+        "name": "settleBounty",
+        "stateMutability": "nonpayable",
+        "inputs": [{"name": "bountyId", "type": "uint256"}],
+        "outputs": [],
+    },
+    {
+        "type": "function",
         "name": "challengeProof",
         "stateMutability": "nonpayable",
         "inputs": [{"name": "bountyId", "type": "uint256"}],
@@ -140,6 +147,17 @@ BOUNTY_FACTORY_ABI: list[dict[str, Any]] = [
             {"name": "bountyId", "type": "uint256", "indexed": True},
             {"name": "solver", "type": "address", "indexed": True},
             {"name": "amount", "type": "uint256", "indexed": False},
+        ],
+        "anonymous": False,
+    },
+    {
+        "type": "event",
+        "name": "BountySettled",
+        "inputs": [
+            {"name": "bountyId", "type": "uint256", "indexed": True},
+            {"name": "solver", "type": "address", "indexed": True},
+            {"name": "amount", "type": "uint256", "indexed": False},
+            {"name": "settler", "type": "address", "indexed": True},
         ],
         "anonymous": False,
     },

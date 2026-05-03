@@ -1,5 +1,4 @@
 import asyncio
-import json
 import logging
 import os
 import time
@@ -15,7 +14,6 @@ from pydantic import BaseModel
 from backend import (
     badges,
     cctp_watcher,
-    claim_task,
     db,
     inft,
     keeperhub,
@@ -23,6 +21,7 @@ from backend import (
     og_storage,
     personas,
     publisher,
+    settle_task,
     telegram_bot,
     watcher,
 )
@@ -53,7 +52,10 @@ async def lifespan(app: FastAPI):
     await db.init_db()
     if og_chain.is_configured():
         _tasks.append(asyncio.create_task(watcher.watcher_task(), name="watcher"))
-        _tasks.append(asyncio.create_task(claim_task.claim_task(), name="claim"))
+        # Permissionless settlement keeper: triggers KH workflow (preferred)
+        # or operator fallback when challenge windows expire. Replaces the
+        # legacy per-persona claim_task.
+        _tasks.append(asyncio.create_task(settle_task.settle_task(), name="settle"))
         # iNFT mints run once at startup, idempotent. Best-effort.
         _tasks.append(asyncio.create_task(inft.init(), name="inft_init"))
         _tasks.append(asyncio.create_task(personas.init(), name="personas_init"))
@@ -637,33 +639,11 @@ async def submit_proof(body: SubmitProofBody) -> dict[str, Any]:
                 "via": "submitProofFor" if effective_signature else "submitProof",
             }
 
-    keeperhub_field = None
-    if result.accepted and keeperhub.is_configured():
-        workflow_id = os.environ["KEEPERHUB_WORKFLOW_ID"]
-        kh_inputs = {
-            "bountyId": bounty.get("onchain_bounty_id"),
-            "attestationHash": signed["attestation_hash"],
-            "solver": effective_solver,
-        }
-        kh_resp = await keeperhub.execute_oneoff(workflow_id, kh_inputs)
-        execution_id = None
-        status = "ok" if kh_resp else "skipped"
-        if isinstance(kh_resp, dict):
-            execution_id = kh_resp.get("executionId") or kh_resp.get("id")
-            status = kh_resp.get("status", status)
-        await db.insert_kh_execution(
-            ts=now,
-            bounty_id=body.bounty_id,
-            workflow_id=workflow_id,
-            execution_id=execution_id,
-            status=status,
-            error=None if kh_resp is not None else "execute_oneoff returned None",
-            inputs_json=json.dumps(kh_inputs),
-        )
-        keeperhub_field = {
-            "execution_id": execution_id,
-            "status": status,
-        }
+    # KeeperHub is no longer pinged on submit — it's the settlement keeper,
+    # not a notification surface. settle_task fires the KH workflow when the
+    # challenge window expires; that drives the actual on-chain settleBounty
+    # from KH's hosted Turnkey wallet on chain 16602.
+    settle_due_at = now + bounty["challenge_window_seconds"] if result.accepted else None
 
     return {
         "attestation": signed,
@@ -671,7 +651,11 @@ async def submit_proof(body: SubmitProofBody) -> dict[str, Any]:
         "explanation": explanation,
         "kernel_output": result.kernel_output,
         "onchain": onchain_field,
-        "keeperhub": keeperhub_field,
+        "settlement": {
+            "due_at": settle_due_at,
+            "driver": "keeperhub" if (result.accepted and keeperhub.is_configured()) else "operator",
+            "function": "settleBounty(uint256)",
+        } if result.accepted else None,
     }
 
 
@@ -805,19 +789,31 @@ async def leaderboard(limit: int = 20) -> dict[str, Any]:
 async def agent_status() -> dict[str, Any]:
     """Snapshot of the agent's iNFT identity, deployed contracts,
     0G Storage / Compute / KeeperHub configuration. Powers the
-    dashboard's agent status panel."""
+    dashboard's agent status panel + the 'Settlement Authority' badge."""
     addresses = og_chain.addresses() if og_chain.is_configured() else None
     kh_recent = await db.latest_kh_executions(limit=5)
+    operator_address = og_chain.get_account().address if og_chain.is_configured() else None
+    kh_wallet = os.getenv("KEEPERHUB_WALLET_ADDRESS")
+    settlement_driver = "keeperhub" if (keeperhub.is_configured() and kh_wallet) else "operator"
+    settlement_authority = kh_wallet if settlement_driver == "keeperhub" else operator_address
     return {
         "inft": inft.get_state(),
         "chain": addresses,
-        "operator": og_chain.get_account().address if og_chain.is_configured() else None,
+        "operator": operator_address,
         "storage": {
             "configured": og_storage.is_configured(),
         },
         "keeperhub": {
             "configured": keeperhub.is_configured(),
+            "wallet_address": kh_wallet,
             "recent_executions": kh_recent,
+        },
+        "settlement": {
+            "driver": settlement_driver,
+            "authority_address": settlement_authority,
+            "function": "settleBounty(uint256)",
+            "permissionless": True,
+            "chain_id": addresses["chainId"] if addresses else None,
         },
     }
 

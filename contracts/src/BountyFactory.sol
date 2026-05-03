@@ -58,6 +58,12 @@ contract BountyFactory is ReentrancyGuard {
     );
     event ProofChallenged(uint256 indexed bountyId, address indexed challenger);
     event BountyClaimed(uint256 indexed bountyId, address indexed solver, uint256 amount);
+    event BountySettled(
+        uint256 indexed bountyId,
+        address indexed solver,
+        uint256 amount,
+        address indexed settler
+    );
     event BountyCancelled(uint256 indexed bountyId);
 
     constructor(IERC20 _usdc, ISolverRegistry _registry) {
@@ -145,6 +151,34 @@ contract BountyFactory is ReentrancyGuard {
         // M3: stake + DisputeManager re-run + slashing wired here
     }
 
+    /// @notice Settle a submitted bounty after the challenge window has
+    /// expired. Permissionless: anyone (the recorded solver, a public keeper,
+    /// KeeperHub's hosted Turnkey wallet, a third-party watcher) can call
+    /// this. USDC is always transferred to the recorded solver address, never
+    /// to msg.sender — settlement infrastructure is therefore decoupled from
+    /// solver custody. Idempotent via the Status.Submitted gate; duplicate
+    /// calls revert with "not settleable".
+    function settleBounty(uint256 bountyId) external nonReentrant {
+        Bounty storage b = bounties[bountyId];
+        require(b.status == Status.Submitted, "not settleable");
+        require(block.timestamp >= b.submittedAt + b.challengeWindow, "window not over");
+
+        b.status = Status.Settled;
+        address solver = b.solver;
+        uint256 amount = b.amount;
+        usdc.safeTransfer(solver, amount);
+        registry.recordSolve(solver);
+
+        emit BountySettled(bountyId, solver, amount, msg.sender);
+        // BountyClaimed kept for indexer back-compat with the pre-settleBounty
+        // ABI; downstream consumers should migrate to BountySettled.
+        emit BountyClaimed(bountyId, solver, amount);
+    }
+
+    /// @notice Solver-initiated settlement, kept for clients that already
+    /// know to call this. Functionally equivalent to settleBounty when the
+    /// caller IS the recorded solver — included so the solver-side claim
+    /// flow doesn't have to know about the keeper architecture.
     function claimBounty(uint256 bountyId) external nonReentrant {
         Bounty storage b = bounties[bountyId];
         require(b.status == Status.Submitted, "not claimable");
@@ -156,6 +190,7 @@ contract BountyFactory is ReentrancyGuard {
         usdc.safeTransfer(msg.sender, amount);
         registry.recordSolve(msg.sender);
 
+        emit BountySettled(bountyId, msg.sender, amount, msg.sender);
         emit BountyClaimed(bountyId, msg.sender, amount);
     }
 

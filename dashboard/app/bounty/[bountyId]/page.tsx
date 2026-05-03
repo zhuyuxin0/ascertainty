@@ -22,6 +22,30 @@ async function loadBounty(id: number): Promise<StatusResp | null> {
   }
 }
 
+type SettlementInfo = {
+  driver: "keeperhub" | "operator";
+  authority_address: string | null;
+  function: string;
+  permissionless: boolean;
+  chain_id: number | null;
+};
+
+type BountyFactoryInfo = { address: string | null; settlement: SettlementInfo | null };
+
+async function loadFactoryInfo(): Promise<BountyFactoryInfo> {
+  try {
+    const res = await fetch(`${API_URL}/agent/status`, { cache: "no-store" });
+    if (!res.ok) return { address: null, settlement: null };
+    const data = await res.json();
+    return {
+      address: data?.chain?.contracts?.BountyFactory ?? null,
+      settlement: data?.settlement ?? null,
+    };
+  } catch {
+    return { address: null, settlement: null };
+  }
+}
+
 const EXPLORER = "https://chainscan-galileo.0g.ai";
 const STATUS_BG: Record<string, string> = {
   open: "bg-cyan/15 text-cyan border-cyan/40",
@@ -38,7 +62,7 @@ export default async function BountyDetailPage({
 }) {
   const id = parseInt(params.bountyId, 10);
   if (Number.isNaN(id)) return <NotFound />;
-  const data = await loadBounty(id);
+  const [data, factory] = await Promise.all([loadBounty(id), loadFactoryInfo()]);
   if (!data) return <NotFound />;
 
   const { bounty, submissions } = data;
@@ -145,12 +169,62 @@ export default async function BountyDetailPage({
                 <ExplorerTx hash={bounty.tx_hash} />
               </Field>
             )}
-            {bounty.onchain_bounty_id !== null && (
+            {bounty.onchain_bounty_id !== null && factory.address && (
               <Field label="contract">
-                <ExplorerAddr addr="0x11E351EA4Ec6F9163916c1941320a0F6d2b80C1c" />
+                <ExplorerAddr addr={factory.address} />
               </Field>
             )}
           </div>
+
+          {/* Settlement Authority — production architecture is permissionless
+              settleBounty() driven by KH's hosted Turnkey wallet. Visible to
+              the bounty poster so they can independently audit who will
+              actually move the USDC at settlement time. */}
+          {factory.settlement && bounty.onchain_bounty_id !== null && (
+            <div className="border border-line/60 bg-cyan/5 p-4 mt-2">
+              <div className="flex items-baseline justify-between mb-2">
+                <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-cyan/80">
+                  settlement authority
+                </span>
+                <span className="font-mono text-[9px] uppercase tracking-widest text-white/40">
+                  permissionless · chain {factory.settlement.chain_id ?? "?"}
+                </span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 font-mono text-xs">
+                <Field label="driver">
+                  <span
+                    className={`inline-block border px-2 py-0.5 text-[10px] uppercase tracking-widest ${
+                      factory.settlement.driver === "keeperhub"
+                        ? "border-cyan/60 bg-cyan/15 text-cyan"
+                        : "border-amber/40 bg-amber/10 text-amber"
+                    }`}
+                  >
+                    {factory.settlement.driver}
+                  </span>
+                </Field>
+                {factory.settlement.authority_address && (
+                  <Field label="signer">
+                    <ExplorerAddr addr={factory.settlement.authority_address} />
+                  </Field>
+                )}
+                <Field label="function">
+                  <Mono>{factory.settlement.function}</Mono>
+                </Field>
+              </div>
+              <p className="font-mono text-[10px] text-white/50 leading-relaxed mt-3">
+                After the {bounty.challenge_window_seconds}s challenge window
+                expires with no challenge, anyone can call{" "}
+                <Mono>{factory.settlement.function}</Mono> on the bounty
+                contract. USDC is transferred to the recorded solver — never to
+                the caller. Ascertainty's keeper drives this automatically via{" "}
+                {factory.settlement.driver === "keeperhub"
+                  ? "KeeperHub's hosted Turnkey wallet"
+                  : "the operator wallet"}
+                ; KH downtime can't strand your payout because the function is
+                public.
+              </p>
+            </div>
+          )}
 
           <div className="flex gap-3 pt-2">
             <Link

@@ -193,3 +193,26 @@ async def claim_bounty_onchain(*, onchain_bounty_id: int) -> Optional[OnchainTxR
     except Exception as e:
         log.warning("publisher: claimBounty failed: %s", e)
         return None
+
+
+async def settle_bounty_onchain(*, onchain_bounty_id: int) -> Optional[OnchainTxResult]:
+    """BountyFactory.settleBounty — permissionless. Operator wallet drives
+    settlement when KeeperHub's hosted Turnkey wallet either isn't
+    configured or its execution failed. Solver of record (already committed
+    on-chain at submission time) receives the USDC; msg.sender is just the
+    keeper that paid gas."""
+    if not is_configured():
+        return None
+    factory = og_chain.get_factory()
+    try:
+        async with _lock:
+            fn = factory.functions.settleBounty(onchain_bounty_id)
+            tx_hash, block_number, _ = await _send_tx(fn)
+        log.info(
+            "publisher: settleBounty -> tx=%s bountyId=%s block=%s",
+            tx_hash, onchain_bounty_id, block_number,
+        )
+        return OnchainTxResult(tx_hash=tx_hash, block_number=block_number)
+    except Exception as e:
+        log.warning("publisher: settleBounty failed: %s", e)
+        return None

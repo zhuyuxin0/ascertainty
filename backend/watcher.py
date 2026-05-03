@@ -10,7 +10,10 @@ Events handled:
   BountyCreated   — UPSERT bounty row (link onchain_bounty_id to spec_hash)
   ProofSubmitted  — record submission, mark bounty.status = 'submitted'
   ProofChallenged — mark bounty.status = 'challenged'
-  BountyClaimed   — mark bounty.status = 'settled', bump solver reputation
+  BountySettled   — mark bounty.status = 'settled', bump solver reputation,
+                    record the keeper (msg.sender) that drove settlement
+  BountyClaimed   — legacy event still emitted alongside BountySettled for
+                    indexer back-compat; ignored here to avoid double-count
 """
 from __future__ import annotations
 
@@ -82,8 +85,8 @@ async def _process_window(factory, from_block: int, to_block: int) -> None:
     for challenged in await factory.events.ProofChallenged.get_logs(from_block=from_block, to_block=to_block):
         await _handle_proof_challenged(challenged)
         total += 1
-    for claimed in await factory.events.BountyClaimed.get_logs(from_block=from_block, to_block=to_block):
-        await _handle_bounty_claimed(claimed)
+    for settled in await factory.events.BountySettled.get_logs(from_block=from_block, to_block=to_block):
+        await _handle_bounty_settled(settled)
         total += 1
     if total:
         log.info("watcher: processed %d events in blocks %s-%s", total, from_block, to_block)
@@ -167,28 +170,43 @@ async def _handle_proof_challenged(ev) -> None:
         )
 
 
-async def _handle_bounty_claimed(ev) -> None:
+async def _handle_bounty_settled(ev) -> None:
+    """BountySettled fires from settleBounty (permissionless keeper path)
+    and from claimBounty (solver-initiated path). msg.sender is the
+    `settler` — could be the operator wallet, KeeperHub's hosted Turnkey
+    wallet, the solver themselves, or any third-party keeper. The solver
+    of record (and the USDC recipient) is `solver`; that's what we credit
+    on the leaderboard regardless of who paid gas to drive settlement."""
+    import json as _json
     args = ev["args"]
     onchain_id = int(args["bountyId"])
     solver = args["solver"]
+    settler = args["settler"]
+    amount = int(args["amount"])
     bounty = await db.get_bounty_by_onchain_id(onchain_id)
     if bounty is None:
         return
     await db.update_bounty_status(bounty["id"], "settled")
     await db.upsert_solver(address=solver, ts=int(time.time()))
     await db.increment_solver_reputation(solver, delta=1)
-    log.info("watcher: BountyClaimed on-chain id=%s solver=%s amount=%s",
-             onchain_id, solver, int(args["amount"]))
-    # Mark the race finished (clears any in-flight progress events)
+    log.info("watcher: BountySettled on-chain id=%s solver=%s amount=%s settler=%s",
+             onchain_id, solver, amount, settler)
+    # Mark the race finished — finish event lands at the moment of on-chain
+    # settlement, which is the moment the USDC moves. The dashboard's race
+    # engine uses this to play the finish-line burst synced to real settlement.
     await db.insert_race_event(
         bounty_id=bounty["id"],
         solver_address=solver,
         event_type="finish",
-        data_json=f'{{"final_amount_usdc": {int(args["amount"])}}}',
+        data_json=_json.dumps({
+            "final_amount_usdc": amount,
+            "settler": settler,
+            "tx_hash": ev["transactionHash"].hex(),
+        }),
         ts=int(time.time()),
     )
     from backend import telegram_bot
-    await telegram_bot.broadcast_bounty_claimed(bounty, solver, int(args["amount"]))
+    await telegram_bot.broadcast_bounty_claimed(bounty, solver, amount)
 
 
 async def _emit_synthetic_race(bounty: dict, solver: str, num_steps: int = 12) -> None:

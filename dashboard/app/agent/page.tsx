@@ -27,6 +27,7 @@ type AgentStatus = {
   storage: { configured: boolean };
   keeperhub: {
     configured: boolean;
+    wallet_address: string | null;
     recent_executions: Array<{
       id: number;
       ts: number;
@@ -35,6 +36,13 @@ type AgentStatus = {
       execution_id: string | null;
       status: string;
     }>;
+  };
+  settlement: {
+    driver: "keeperhub" | "operator";
+    authority_address: string | null;
+    function: string;
+    permissionless: boolean;
+    chain_id: number | null;
   };
 };
 
@@ -191,10 +199,24 @@ export default async function AgentStatusPage() {
               </p>
             </Panel>
 
-            {/* KeeperHub */}
-            <Panel title="KeeperHub MCP" pillar="KeeperHub">
-              <Row label="status">
-                <Pill ok={status.keeperhub.configured} text={status.keeperhub.configured ? "configured" : "off"} />
+            {/* KeeperHub — Settlement Authority */}
+            <Panel title="KeeperHub · Settlement Authority" pillar="KeeperHub">
+              <Row label="driver">
+                <Pill
+                  ok={status.settlement.driver === "keeperhub"}
+                  text={status.settlement.driver}
+                />
+              </Row>
+              {status.settlement.authority_address && (
+                <Row label="authority">
+                  <ExplorerLink addr={status.settlement.authority_address} />
+                </Row>
+              )}
+              <Row label="function">
+                <Mono>{status.settlement.function}</Mono>
+              </Row>
+              <Row label="permissionless">
+                <Pill ok={status.settlement.permissionless} text="yes" />
               </Row>
               <Row label="executions">
                 {status.keeperhub.recent_executions.length === 0 ? (
@@ -221,8 +243,13 @@ export default async function AgentStatusPage() {
                 </div>
               )}
               <p className="font-mono text-[10px] text-white/40 leading-relaxed mt-2">
-                Each <Mono>/bounty/submit</Mono> accept fires the configured
-                KeeperHub workflow via MCP <Mono>execute_workflow</Mono>.
+                Settlement is permissionless: anyone can call{" "}
+                <Mono>{status.settlement.function}</Mono> on{" "}
+                <Mono>BountyFactory</Mono> after the challenge window expires.
+                USDC always flows to the recorded solver, never to the caller.
+                When configured, KeeperHub's hosted Turnkey wallet drives every
+                settlement on chain {status.settlement.chain_id}; the operator
+                wallet is the fallback if KH is unreachable.
               </p>
             </Panel>
           </div>

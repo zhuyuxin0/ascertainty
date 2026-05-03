@@ -84,12 +84,20 @@ Stack:
              event stream the deleted Three.js scene used to render.
   Settlement — watcher polls BountyFactory events every 5s (safe:
              Status.Open → Submitted is atomic on-chain, racing
-             second submitters revert with `not open`); claim_task
-             fires claimBounty after each challenge window expires,
-             signed by whichever persona's privkey owns the
-             submission so the persona — not the operator —
-             is the on-chain claimer; KeeperHub MCP execute_workflow
-             logs every accept to kh_executions.
+             second submitters revert with `not open`). settle_task
+             (every 30s) drives the new permissionless settleBounty()
+             function: KeeperHub MCP execute_workflow first — KH's
+             hosted Turnkey wallet on chain 16602 (0G support landed
+             in KH Week 17, May 2 2026) signs and broadcasts the
+             on-chain settleBounty(bountyId), with the operator
+             wallet as the fallback signer if KH is unreachable.
+             USDC always flows to the recorded solver, never to the
+             caller — so the keeper architecture is decoupled from
+             solver custody and can never divert payouts. The
+             contract is idempotent (Status.Submitted gate), so KH
+             and operator paths converge safely. The dashboard's
+             /agent page renders this as the live "Settlement
+             Authority" card.
   iNFTs    — three solver personas (Andy / Carl / Bea). Each has a
              deterministic keypair (HKDF from operator key + slug),
              a small OG drip from the operator for gas, an identity
@@ -164,16 +172,22 @@ All four 0G pillars in production, plus three load-bearing uses
 of each (not just integration checkboxes):
 
 1. 0G Chain (Galileo testnet, chainId 16602):
-   - BountyFactory at 0x11E351EA4Ec6F9163916c1941320a0F6d2b80C1c
-     (with submitProofFor + OZ ECDSA recovery)
-   - SolverRegistry at 0x6E5CEb3Ac85dA96479A0C080E7fB8D5762551A32
+   - BountyFactory at 0x2B1cBdC4FBF77Ca66483F840E7D9C626b7D1563f
+     (with submitProofFor + OZ ECDSA recovery, plus the new
+     permissionless settleBounty() that lets any keeper —
+     including KeeperHub's hosted Turnkey wallet — drive
+     settlement on behalf of the recorded solver)
+   - SolverRegistry at 0xe834d3fDACa5D9091D3c32F74c968e9469Ae513A
    - AgentNFT at 0x0cf5c9dd2CF3E48b2E1078995289d6b0690f1105
      (now holds 4 iNFTs: token #1 operator + #2 Andy + #3 Carl + #4 Bea)
    - MockUSDC at 0x8D53B5b599caA7205fB869A14Dd7141c3866010a
    Settlement loop end-to-end: poster → BountyFactory.createBounty
    from connected MetaMask → solver signs EIP-191 → operator relays
-   submitProofFor → challenge window → persona-signed claimBounty.
-   Real txs visible at chainscan-galileo.0g.ai for every step.
+   submitProofFor → challenge window → KeeperHub Turnkey wallet
+   (or operator-fallback) drives permissionless settleBounty() →
+   USDC transferred to the recorded solver, BountySettled event
+   emitted. Real txs visible at chainscan-galileo.0g.ai for every
+   step.
 
 2. 0G Storage:
    Three load-bearing uses:
@@ -221,33 +235,57 @@ startup; backend/badges.py is the 9-rule achievement engine.
 ```
 Two integration surfaces shipped:
 
-1. MCP execute_workflow trigger on verification accept:
-   The /bounty/submit endpoint, after building the attestation,
-   calls keeperhub.execute_oneoff(KEEPERHUB_WORKFLOW_ID, inputs)
-   via the MCP JSON-RPC 2.0 protocol with the documented
-   `Authorization: Bearer kh_<key>` header. Each execution is
-   recorded in the kh_executions table and surfaced on the agent
-   status page (/agent). The workflow itself was created
-   programmatically via MCP create_workflow + ai_generate_workflow,
-   not the dashboard UI.
+1. KeeperHub IS the Settlement Authority on 0G Galileo.
+   When a bounty's challenge window expires, settle_task triggers
+   the KH workflow via MCP execute_workflow with `{ bountyId }`.
+   KH's hosted Turnkey wallet (now supported on chain 16602 since
+   the Week 17 update added 0G) signs and broadcasts
+   BountyFactory.settleBounty(uint256), permissionlessly moving
+   the USDC to the recorded solver. The on-chain function is
+   idempotent (Status.Submitted gate), so an operator-wallet
+   fallback in the same task is safe — duplicate calls revert
+   with "not settleable". USDC always flows to the recorded
+   solver, never to the caller, so settlement infrastructure is
+   decoupled from solver custody. The workflow is set up via
+   `python -m scripts.setup_keeperhub_workflow` (programmatic MCP
+   create_workflow with a single web3/write-contract step targeting
+   chain 16602). Every execution is recorded in kh_executions and
+   surfaced on /agent as the live "Settlement Authority" card with
+   the KH wallet address linked to the Galileo block explorer.
 
 2. Documentation feedback (FEEDBACK.md):
-   Seven verified findings from a single afternoon's integration
-   work, including:
+   Eight verified findings — six from initial integration on
+   April 27, two more (Claims 7-8) caught today (May 3) while
+   wiring the production settleBounty architecture against the
+   new 0G chain support. Highlights:
    - Direct Execution page documents X-API-Key but the API
      requires Authorization: Bearer (and keeper_ vs kh_ prefix).
    - HTTP 202 success undocumented.
-   - No REST endpoint for wallet discovery — forced the
-     architectural compromise of using the operator wallet as
-     settlement signer rather than KH's hosted Turnkey wallet.
-   - 0G Galileo (chain 16602) not in the curated chain list for
-     web3/* actions, blocking the natural settlement integration.
+   - No REST endpoint for wallet discovery — forces a manual
+     dashboard copy-paste step in any otherwise-headless deploy.
    - Numeric chain-ID escape hatch is undocumented.
    - Agentic wallet skill-install command in docs is wrong.
+   - `create_workflow` schema is largely tribal knowledge: four
+     distinct undocumented constraints bit our integration in
+     sequence (network format, functionArgs envelope, template
+     substitution semantics, manual-trigger field path).
+   - MCP `execute_workflow` arg is `input` (singular); using
+     `inputs` (plural) is silently ignored and surfaces 60s later
+     as a template-substitution miss.
 
-Architecture: backend/keeperhub.py is a minimal MCP client; the
-workflow JSON was constructed via the MCP API and stored in the
-KH dashboard (id mqfy9h0zkedx1y4dbtrs5).
+   A previous draft also flagged 0G Galileo missing from the
+   curated web3/* chain list — resolved by KH's Week 17
+   announcement (May 2, 2026) adding official 0G support, and
+   preserved in FEEDBACK.md's "Resolved during the hackathon"
+   section with the three concrete things that shipped in
+   response.
+
+Architecture: backend/keeperhub.py is a minimal async MCP client;
+backend/settle_task.py is the keeper that triggers KH (preferred)
+or the operator fallback once a challenge window expires;
+scripts/setup_keeperhub_workflow.py creates the
+"Ascertainty Settlement Driver" workflow programmatically via MCP
+create_workflow and prints the workflow id for the operator's .env.
 ```
 
 ### (If picking) Gensyn or Uniswap
@@ -267,7 +305,8 @@ shipped end-to-end.
 | GitHub repo | https://github.com/zhuyuxin0/ascertainty |
 | Backend health (proof of liveness) | https://api.ascertainty.xyz/health |
 | Agent status (prize-track proof) | https://ascertainty.xyz/agent |
-| 0G Galileo BountyFactory | https://chainscan-galileo.0g.ai/address/0x11E351EA4Ec6F9163916c1941320a0F6d2b80C1c |
+| 0G Galileo BountyFactory | https://chainscan-galileo.0g.ai/address/0x2B1cBdC4FBF77Ca66483F840E7D9C626b7D1563f |
+| 0G Galileo SolverRegistry | https://chainscan-galileo.0g.ai/address/0xe834d3fDACa5D9091D3c32F74c968e9469Ae513A |
 | 0G Galileo AgentNFT (4 iNFTs) | https://chainscan-galileo.0g.ai/address/0x0cf5c9dd2CF3E48b2E1078995289d6b0690f1105 |
 
 ## Demo video shot list (≤3 minutes)
@@ -331,9 +370,11 @@ A tight script you can read aloud while screen-recording. Aim for
 - Voiceover: "Mission Control is the live telemetry view —
   three solver personas, each with their own ERC-7857-inspired
   iNFT minted from their own wallet, race against each other.
-  When the challenge window expires, claim_task fires claimBounty
-  signed by the persona's privkey. The watcher catches the
-  BountyClaimed event; the lane turns green; reputation
+  When the challenge window expires, settle_task triggers
+  KeeperHub: KH's hosted Turnkey wallet on chain 16602 signs
+  the on-chain settleBounty call — permissionless by design,
+  USDC always flows to the recorded solver. The watcher catches
+  the BountySettled event; the lane turns cyan; reputation
   increments on-chain in SolverRegistry."
 
 ### 2:25 – 2:50 — Agent panel + earned badges
