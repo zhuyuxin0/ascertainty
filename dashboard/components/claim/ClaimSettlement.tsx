@@ -3,7 +3,8 @@
  * Replaces the dusk-grey card from the previous bounty page with the
  * proceedings-doc treatment. Same data: shows the live KH wallet
  * (or operator fallback) that will drive settleBounty() when the
- * challenge window expires. Anchored as § 03 of the proceedings.
+ * challenge window expires. Anchored as § 04 of the proceedings (§ 03 is
+ * the live course; see components/claim/CourseLive.tsx).
  *
  * Preserves the original card's information but on cream:
  *   driver (keeperhub | operator) → tone-coded pill
@@ -40,7 +41,7 @@ export function ClaimSettlement({
     <section className="border-b border-ink/12 py-16">
       <div className="mx-auto max-w-[1640px] px-6 md:px-14">
         <SectionHead
-          num="§ 03"
+          num="§ 04"
           title={<><em>Settlement</em> authority</>}
           right={
             <p className="font-sans text-[13px] text-ink/66 max-w-md">

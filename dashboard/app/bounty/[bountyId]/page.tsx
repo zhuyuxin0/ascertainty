@@ -14,9 +14,12 @@
  *   IV.  Argument          — TheoremSigil + theorem + tee gloss + premises
  *   V.   Evidence          — submissions as evidence cards (left)
  *        Live ledger       — dusk insert (right, sticky)
- *   VI.  Settlement        — KeeperHub/operator authority card
- *   VII. Submit a proof    — SubmitProofForm preserved; ghost when not open
- *   VIII.Colophon          — minimal back link
+ *   VI.  Course · Live     — procedurally generated track + persona cars
+ *                            (cream-paper rewrite of M4 race; replaces the
+ *                            dark Three.js scene at /mission/[id])
+ *   VII. Settlement        — KeeperHub/operator authority card
+ *   VIII.Submit a proof    — SubmitProofForm preserved; ghost when not open
+ *   IX.  Colophon          — minimal back link
  */
 
 import Link from "next/link";
@@ -32,6 +35,7 @@ import {
 } from "@/components/claim/ClaimSections";
 import { ClaimAside } from "@/components/claim/ClaimAside";
 import { ClaimSettlement } from "@/components/claim/ClaimSettlement";
+import { CourseLive } from "@/components/claim/CourseLive";
 import { API_URL, type Bounty, type Submission } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
@@ -156,6 +160,8 @@ export default async function ClaimProceedingsPage({
         </div>
       </section>
 
+      <CourseLive bounty={bounty} />
+
       <ClaimSettlement
         settlement={factory.settlement}
         challengeWindowSeconds={bounty.challenge_window_seconds}
@@ -165,7 +171,7 @@ export default async function ClaimProceedingsPage({
       <section className="border-b border-ink/12 py-16">
         <div className="mx-auto max-w-[1640px] px-6 md:px-14">
           <SectionHead
-            num="§ 04"
+            num="§ 05"
             title={<>File a <em>proof</em></>}
             right={
               <p className="font-sans text-[13px] text-ink/66 max-w-sm">
@@ -187,11 +193,8 @@ export default async function ClaimProceedingsPage({
       {/* Colophon */}
       <footer className="border-t border-ink/12 bg-cream-soft/40">
         <div className="mx-auto max-w-[1640px] px-6 md:px-14 py-10 flex flex-wrap items-baseline justify-between gap-6 font-mono text-[10px] uppercase tracking-[0.16em] text-ink/66">
-          <Link href="/bounties" className="hover:text-peacock transition-colors">
-            ← back to bounties
-          </Link>
-          <Link href={`/mission/${bounty.id}`} className="hover:text-peacock transition-colors">
-            mission control · live telemetry →
+          <Link href="/atlas?panel=bounties" className="hover:text-peacock transition-colors">
+            ← back to the atlas
           </Link>
           <span>
             specimen filed{" "}
@@ -334,10 +337,10 @@ function NotFound() {
           the bounty id you requested does not exist in the registry.
         </p>
         <Link
-          href="/bounties"
+          href="/atlas?panel=bounties"
           className="mt-6 inline-block font-mono text-[11px] uppercase tracking-[0.16em] text-peacock hover:underline"
         >
-          ← back to bounties
+          ← back to the atlas
         </Link>
       </div>
     </main>
