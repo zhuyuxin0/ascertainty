@@ -1,0 +1,301 @@
+"use client";
+/* Cosmos — the cartographic SVG canvas of the v3 atlas.
+ *
+ * One <svg viewBox="0 0 1600 900"> covering the full field. Renders:
+ *   • Region wash gradients (radial fills behind each cluster)
+ *   • Confidence arcs between regions (decorative, hand-tuned)
+ *   • Confidence badges on the arcs (94% / 52% / 71% / 21%)
+ *   • Three live regions: AI Models · Math Proofs · Prediction Markets
+ *   • Three placeholder regions: DeFi Security · Scientific Claims · Engineering
+ *   • Three persona dots wandering the field: Andy · Carl · Bea
+ *   • A semi-opaque cream overlay when band ≠ cosmos (lifts the band-view
+ *     on top of the cosmos backdrop without fully hiding it)
+ *
+ * Counts in region labels ("50 MODELS · LIVE") are wired to live data
+ * from /atlas/models, /atlas/markets, /bounties via props.
+ *
+ * SVG geometry is the canonical layout from
+ * design_handoff_atlas_v3/atlas-v3-light-interactive.html. */
+
+import { useAtlasV3 } from "@/lib/atlas-v3/state";
+import { PERSONAS, PLACEHOLDERS, REGIONS, type RegionDef } from "@/lib/atlas-v3/regions";
+
+import { DomainView } from "./bands/DomainView";
+import { EntityView } from "./bands/EntityView";
+import { DetailView } from "./bands/DetailView";
+
+export function Cosmos({
+  modelCount,
+  marketCount,
+  bountyCount,
+}: {
+  modelCount: number;
+  marketCount: number;
+  bountyCount: number;
+}) {
+  const band = useAtlasV3((s) => s.band);
+  const setBand = useAtlasV3((s) => s.setBand);
+  const setRegion = useAtlasV3((s) => s.setRegion);
+  const setObserve = useAtlasV3((s) => s.setObserve);
+  const openPersona = useAtlasV3((s) => s.openPersona);
+  const showTooltip = useAtlasV3((s) => s.showTooltip);
+  const moveTooltip = useAtlasV3((s) => s.moveTooltip);
+  const hideTooltip = useAtlasV3((s) => s.hideTooltip);
+  const pushToast = useAtlasV3((s) => s.pushToast);
+
+  const counts: Record<RegionDef["id"], number> = {
+    "ai-models": modelCount,
+    "math-proofs": bountyCount,
+    "prediction-markets": marketCount,
+  };
+
+  const onRegionClick = (r: RegionDef) => {
+    setRegion(r.id);
+    setBand("domain");
+    setObserve({ kind: "region", id: r.id });
+    pushToast({ glyph: "→", label: "entered domain", em: ` ${r.name}` });
+  };
+
+  const onPersonaClick = (slug: string, name: string) => {
+    openPersona(slug);
+    pushToast({ glyph: "⌥", label: "persona detail", em: ` ${name}` });
+  };
+
+  const tipHandlers = (label: string, body: string, keys: Array<[string, string]>) => ({
+    onMouseEnter: (e: React.MouseEvent) => showTooltip({ label, body, keys }, e),
+    onMouseMove: (e: React.MouseEvent) => moveTooltip(e),
+    onMouseLeave: () => hideTooltip(),
+  });
+
+  return (
+    <div className="absolute inset-0 z-[2]">
+      <svg
+        viewBox="0 0 1600 900"
+        preserveAspectRatio="xMidYMid slice"
+        className="w-full h-full"
+        style={{ display: "block" }}
+      >
+        <defs>
+          <pattern id="hatch-ash" patternUnits="userSpaceOnUse" width="8" height="8" patternTransform="rotate(45)">
+            <line x1="0" y1="0" x2="0" y2="8" stroke="rgba(10,21,37,0.06)" strokeWidth="1" />
+          </pattern>
+          {REGIONS.map((r) => (
+            <radialGradient key={r.id} id={`zone-${r.id}`} cx="50%" cy="50%">
+              <stop offset="0%" stopColor={r.color} stopOpacity="0.08" />
+              <stop offset="70%" stopColor={r.color} stopOpacity="0.03" />
+              <stop offset="100%" stopColor={r.color} stopOpacity="0" />
+            </radialGradient>
+          ))}
+        </defs>
+
+        {/* Region wash backgrounds (paper ink zones, not glows) */}
+        {REGIONS.map((r) => (
+          <circle
+            key={`wash-${r.id}`}
+            cx={r.cx}
+            cy={r.cy}
+            r={r.haloR + 60}
+            fill={`url(#zone-${r.id})`}
+            opacity={0.8}
+          />
+        ))}
+
+        {/* Confidence arcs between regions — ink curves on paper */}
+        <path d="M 1100 280 Q 1240 480 1280 720" fill="none" stroke="rgba(10,21,37,0.18)" strokeWidth="1.2" />
+        <path d="M 1100 280 Q 1180 540 1280 720" fill="none" stroke="rgba(199,106,43,0.25)" strokeWidth="0.9" />
+        <path d="M 1100 280 Q 760 380 540 600" fill="none" stroke="rgba(10,21,37,0.14)" strokeWidth="1.0" />
+        <path d="M 540 600 Q 900 720 1280 720" fill="none" stroke="rgba(10,21,37,0.08)" strokeWidth="0.7" strokeDasharray="3 5" />
+
+        {/* Confidence badges along the arcs */}
+        <g fontFamily="JetBrains Mono" fontSize="9" fontWeight={500} letterSpacing={1}>
+          <ArcBadge x={1182} y={488} val="94%" stroke="rgba(10,21,37,0.22)" fill="rgba(10,21,37,0.66)" />
+          <ArcBadge x={1162} y={418} val="52%" stroke="rgba(199,106,43,0.35)" fill="#C76A2B" />
+          <ArcBadge x={780}  y={428} val="71%" stroke="rgba(10,21,37,0.14)" fill="rgba(10,21,37,0.46)" />
+          <ArcBadge x={900}  y={698} val="21%" stroke="rgba(10,21,37,0.10)" fill="rgba(10,21,37,0.26)" />
+        </g>
+
+        {/* Live regions */}
+        {REGIONS.map((r) => (
+          <g
+            key={r.id}
+            style={{ cursor: "pointer" }}
+            onClick={() => onRegionClick(r)}
+            {...tipHandlers(
+              `region · ${r.name.toLowerCase()}`,
+              `${counts[r.id]} ${r.unit.toLowerCase()} · ${r.subtitle}. Click to enter the ${r.name} domain.`,
+              [["click", "band → domain"]],
+            )}
+          >
+            <circle cx={r.cx} cy={r.cy} r={r.innerR} fill={`${r.color}0A`} />
+            <circle
+              cx={r.cx}
+              cy={r.cy}
+              r={r.innerR - 30}
+              fill="none"
+              stroke={`${r.color}33`}
+              strokeWidth={1}
+              strokeDasharray="2 4"
+            />
+            <RegionGlyph cx={r.cx} cy={r.cy} shape={r.shape} color={r.color} />
+            <text
+              x={r.cx}
+              y={r.cy + r.innerR / 2 + 60}
+              textAnchor="middle"
+              fontFamily="var(--font-instrument-serif), serif"
+              fontStyle="italic"
+              fontSize={r.id === "ai-models" ? 22 : 20}
+              fill="rgba(10,21,37,0.94)"
+              letterSpacing="-0.3"
+            >
+              {r.name}
+            </text>
+            <text
+              x={r.cx}
+              y={r.cy + r.innerR / 2 + 78}
+              textAnchor="middle"
+              fontFamily="var(--font-jetbrains-mono), monospace"
+              fontSize={9}
+              fill={r.color}
+              letterSpacing={2.5}
+            >
+              {counts[r.id]} {r.unit} · LIVE
+            </text>
+          </g>
+        ))}
+
+        {/* Placeholder regions — ash-hatch fill, not interactive */}
+        {PLACEHOLDERS.map((p) => (
+          <g
+            key={p.id}
+            opacity={0.5}
+            style={{ cursor: "not-allowed" }}
+            {...tipHandlers(
+              "pre-region · placeholder",
+              `${p.when} expansion · not navigable yet.`,
+              [["hover", "cursor: not-allowed"], ["click", "no-op"]],
+            )}
+          >
+            <circle cx={p.cx} cy={p.cy} r={p.r} fill="url(#hatch-ash)" stroke="rgba(10,21,37,0.08)" strokeWidth={0.5} />
+            <text
+              x={p.cx}
+              y={p.cy + 6}
+              textAnchor="middle"
+              fontFamily="var(--font-instrument-serif), serif"
+              fontStyle="italic"
+              fontSize={13}
+              fill="rgba(10,21,37,0.30)"
+            >
+              {p.name}
+            </text>
+            <text
+              x={p.cx}
+              y={p.cy + 22}
+              textAnchor="middle"
+              fontFamily="var(--font-jetbrains-mono), monospace"
+              fontSize={8}
+              fill="rgba(199,106,43,0.50)"
+              letterSpacing={2}
+            >
+              {p.when}
+            </text>
+          </g>
+        ))}
+
+        {/* Personas — wandering dots */}
+        {PERSONAS.map((p) => (
+          <g
+            key={p.slug}
+            transform={`translate(${p.x}, ${p.y})`}
+            style={{ cursor: "pointer" }}
+            onClick={() => onPersonaClick(p.slug, p.short)}
+            {...tipHandlers(
+              `persona · ${p.short.toLowerCase()}`,
+              `${p.short[0]}${p.short.slice(1).toLowerCase()} — click to spawn detail card.`,
+              [["click", "persona detail card opens"]],
+            )}
+          >
+            <circle r={14} fill="rgba(250,246,232,0.9)" stroke={p.color} strokeWidth={1} />
+            <text x={0} y={5} textAnchor="middle" fontSize={12}>
+              {p.emoji}
+            </text>
+            <text
+              x={0}
+              y={26}
+              textAnchor="middle"
+              fontFamily="var(--font-jetbrains-mono), monospace"
+              fontSize={7}
+              fill={p.color}
+              letterSpacing={1.5}
+            >
+              {p.short}
+            </text>
+          </g>
+        ))}
+
+        {/* Cream scrim when band ≠ cosmos — lifts the band-view onto the
+            cosmos backdrop. 0.78 alpha so the cosmos color/motion still
+            bleeds through faintly per the v3 README anti-modal-trap rule. */}
+        {band !== "cosmos" && (
+          <rect x={0} y={0} width={1600} height={900} fill="rgba(250,246,232,0.78)" pointerEvents="none" />
+        )}
+
+        {band === "domain" && <DomainView />}
+        {band === "entity" && <EntityView />}
+        {band === "detail" && <DetailView />}
+      </svg>
+    </div>
+  );
+}
+
+function ArcBadge({ x, y, val, stroke, fill }: { x: number; y: number; val: string; stroke: string; fill: string }) {
+  return (
+    <>
+      <rect x={x} y={y} width={36} height={16} fill="#FAF6E8" stroke={stroke} strokeWidth={0.6} />
+      <text x={x + 18} y={y + 12} textAnchor="middle" fill={fill}>
+        {val}
+      </text>
+    </>
+  );
+}
+
+function RegionGlyph({ cx, cy, shape, color }: { cx: number; cy: number; shape: RegionDef["shape"]; color: string }) {
+  return (
+    <g transform={`translate(${cx}, ${cy})`}>
+      {shape === "hexagon" && (
+        <>
+          <polygon
+            points="0,-32 28,-16 28,16 0,32 -28,16 -28,-16"
+            fill={`${color}14`}
+            stroke={color}
+            strokeWidth={1.2}
+          />
+          <line x1={0} y1={-32} x2={0} y2={32} stroke={color} strokeWidth={0.5} opacity={0.4} />
+          <line x1={-28} y1={-16} x2={28} y2={16} stroke={color} strokeWidth={0.5} opacity={0.4} />
+          <line x1={28} y1={-16} x2={-28} y2={16} stroke={color} strokeWidth={0.5} opacity={0.4} />
+          <circle cx={0} cy={0} r={3} fill={color} opacity={0.5} />
+        </>
+      )}
+      {shape === "diamond" && (
+        <>
+          <polygon points="0,-28 24,0 0,28 -24,0" fill={`${color}14`} stroke={color} strokeWidth={1.2} />
+          <line x1={0} y1={-28} x2={0} y2={28} stroke={color} strokeWidth={0.5} opacity={0.4} />
+          <line x1={-24} y1={0} x2={24} y2={0} stroke={color} strokeWidth={0.5} opacity={0.4} />
+          <circle cx={0} cy={0} r={2.5} fill={color} opacity={0.5} />
+        </>
+      )}
+      {shape === "octagon" && (
+        <>
+          <polygon
+            points="-10,-30 10,-30 30,-10 30,10 10,30 -10,30 -30,10 -30,-10"
+            fill={`${color}14`}
+            stroke={color}
+            strokeWidth={1.2}
+          />
+          <line x1={0} y1={-30} x2={0} y2={30} stroke={color} strokeWidth={0.5} opacity={0.4} />
+          <line x1={-30} y1={0} x2={30} y2={0} stroke={color} strokeWidth={0.5} opacity={0.4} />
+          <rect x={-3} y={-3} width={6} height={6} fill={color} opacity={0.4} transform="rotate(45)" />
+        </>
+      )}
+    </g>
+  );
+}
