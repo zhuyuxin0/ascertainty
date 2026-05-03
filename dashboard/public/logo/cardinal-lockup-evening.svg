@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 80" width="480" height="80" aria-label="Ascertainty">
+  
+  
+  <g transform="translate(0,0) scale(1.25)">
+    <rect x="8" y="8" width="48" height="48" fill="#E08C5C"></rect>
+    <rect x="14" y="14" width="36" height="36" fill="none" stroke="#F4ECDB" stroke-width="1.4" opacity="0.9"></rect>
+    <path d="M 32 18 L 32 46" stroke="#F4ECDB" stroke-width="3.2" stroke-linecap="square"></path>
+    <path d="M 18 32 L 46 32" stroke="#F4ECDB" stroke-width="3.2" stroke-linecap="square"></path>
+    <circle cx="32" cy="32" r="2.4" fill="#5DA68E"></circle>
+  </g>
+  <text x="120" y="56" class="word">Ascertainty</text>
+</svg>

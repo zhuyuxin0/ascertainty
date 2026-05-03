@@ -3,9 +3,43 @@
 @tailwind utilities;
 
 :root {
+  /* Default = dusk atmosphere (existing atlas/agent/mission surfaces). */
   --bg: #050507;
   --cyan: #00d4aa;
   --amber: #ff6b35;
+
+  /* Aurora · cream + dusk tokens (landing + claim opt in via body.paper). */
+  --paper-bg:        #FAF6E8;
+  --paper-bg-soft:   #F2EBD3;
+  --paper-bg-card:   #FDFAEE;
+  --paper-line:      rgba(10, 21, 37, 0.12);
+  --paper-line-2:    rgba(10, 21, 37, 0.22);
+  --paper-line-fg:   rgba(10, 21, 37, 0.18);
+  --paper-fg:        rgba(10, 21, 37, 0.94);
+  --paper-fg-1:      rgba(10, 21, 37, 0.66);
+  --paper-fg-2:      rgba(10, 21, 37, 0.46);
+  --paper-fg-3:      rgba(10, 21, 37, 0.26);
+  --paper-bone:      rgba(250, 246, 232, 0.96);
+  --paper-bone-1:    rgba(250, 246, 232, 0.66);
+  --paper-bone-2:    rgba(250, 246, 232, 0.42);
+  --paper-bone-3:    rgba(250, 246, 232, 0.22);
+
+  --persimmon:       #E89A2C;
+  --persimmon-deep:  #B97614;
+  --persimmon-wash:  rgba(232, 154, 44, 0.16);
+  --peacock:         #2A6F8E;
+  --peacock-bright:  #7DD3F7;
+  --peacock-wash:    rgba(42, 111, 142, 0.14);
+  --sapphire:        #1E3A5F;
+  --rose:            #C2546A;
+  --bg-dusk:         #0A1525;
+  --bg-dusk-2:       #0F1B2E;
+
+  --ease-aurora:     cubic-bezier(0.22, 1, 0.36, 1);
+
+  --grotesk: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --serif:   var(--font-instrument-serif), ui-serif, Georgia, serif;
+  --mono:    var(--font-jetbrains-mono), ui-monospace, monospace;
 }
 
 html, body {
@@ -25,4 +59,55 @@ html, body {
     linear-gradient(to right, rgba(255,255,255,0.03) 1px, transparent 1px),
     linear-gradient(to bottom, rgba(255,255,255,0.03) 1px, transparent 1px);
   background-size: 48px 48px;
+}
+
+/* ────────────────────────── PAPER (cream) atmosphere ──────────────────────
+   Opt-in per page via <body class="paper">. Landing + claim use this.
+   Atlas + agent + mission keep the dusk default above. */
+body.paper {
+  background: var(--paper-bg);
+  color: var(--paper-fg);
+  font-family: var(--grotesk);
+  font-weight: 300;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "ss01", "kern", "liga", "calt";
+  cursor: default;
+}
+body.paper ::selection {
+  background: var(--persimmon);
+  color: var(--paper-bg);
+}
+
+/* Paper grain — fibrous, not noisy. Multiplied into the cream so it reads
+   as printed paper rather than a gradient. */
+body.paper::before {
+  content: '';
+  position: fixed; inset: -50%;
+  pointer-events: none;
+  opacity: 0.55;
+  mix-blend-mode: multiply;
+  background-image:
+    radial-gradient(circle at 18% 22%, rgba(10,21,37,0.045) 0.6px, transparent 1.1px),
+    radial-gradient(circle at 72% 64%, rgba(10,21,37,0.035) 0.5px, transparent 1px),
+    radial-gradient(circle at 38% 86%, rgba(10,21,37,0.04) 0.6px, transparent 1.1px),
+    radial-gradient(circle at 60% 12%, rgba(184, 118, 20, 0.025) 1.2px, transparent 2.2px);
+  background-size: 14px 14px, 11px 11px, 19px 19px, 27px 27px;
+  z-index: 1;
+}
+body.paper > * { position: relative; z-index: 2; }
+
+/* Slim cream scrollbar */
+body.paper::-webkit-scrollbar { width: 6px; height: 6px; }
+body.paper::-webkit-scrollbar-track { background: transparent; }
+body.paper::-webkit-scrollbar-thumb { background: rgba(10,21,37,0.12); }
+body.paper::-webkit-scrollbar-thumb:hover { background: rgba(10,21,37,0.24); }
+
+/* Brand mark cross-page transition (landing → atlas → claim share this name
+   on the Cardinal logomark). Falls back gracefully where unsupported. */
+@view-transition { navigation: auto; }
+::view-transition-old(brand),
+::view-transition-new(brand) {
+  animation-duration: 480ms;
+  animation-timing-function: var(--ease-aurora);
 }

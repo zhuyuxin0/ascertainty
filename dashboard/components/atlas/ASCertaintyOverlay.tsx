@@ -3,53 +3,22 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
+import {
+  AS_EXTENSIONS,
+  ASCERTAINTY_LETTERS as LETTERS,
+  CERTAIN_MEANINGS,
+  CERTAIN_RANGE,
+  S_INDEX,
+} from "@/lib/ascertaintyMeanings";
+
 /**
- * The cinematic landing overlay. The name IS the design system:
- *
- *   AS-prefix:  the letter S after A becomes the START of a contextual
- *               word — Stop / Studio / Strategy / Symposium / STEM /
- *               Story — that re-frames the platform per audience. The
- *               extension auto-cycles every 3.5s; hover the S to see
- *               the gloss for the current word.
- *
- *   CERTAIN:    each letter maps to a product principle. Hover any of
- *               C-E-R-T-A-I-N to reveal it.
- *
- *   TY-suffix:  "to you" — the platform is plural-stakeholder; the AS
- *               extension changes for each.
+ * The cinematic landing overlay used on /atlas. The brand mechanic
+ * (AS-extension auto-cycle + CERTAIN hover meanings + TY suffix) lives
+ * in `@/lib/ascertaintyMeanings` so the new cream-paper landing hero
+ * can render the exact same words/principles in its own field.
  *
  * Scrolling/clicking dismisses, revealing the cosmos behind.
  */
-
-const CERTAIN_MEANINGS: Record<string, { word: string; gloss: string }> = {
-  C: { word: "Claims", gloss: "every node is a verifiable claim" },
-  E: { word: "Evidence", gloss: "zoom deeper to see what backs it" },
-  R: {
-    word: "Resolution",
-    gloss: "kernel-checked, TEE-attested, or consensus-resolved",
-  },
-  T: { word: "Tradeable", gloss: "every region can be staked on" },
-  A: { word: "Agents", gloss: "spotters, solvers, spectators" },
-  I: { word: "Information depth", gloss: "irreducible structure, layer by layer" },
-  N: { word: "Navigable", gloss: "explored, not listed" },
-};
-
-// AS-prefix: the S becomes the start of one of these words. The extension
-// auto-cycles; the visible name reads "A S(top) CERTAIN TY", "A S(tudio)
-// CERTAIN TY", etc. The audience tag tells you which stakeholder this
-// framing serves.
-const AS_EXTENSIONS: Array<{ tail: string; word: string; gloss: string; audience: string }> = [
-  { tail: "TOP", word: "Stop", gloss: "a place to pause, examine, verify before acting", audience: "for the analyst" },
-  { tail: "TUDIO", word: "Studio", gloss: "a creative workspace for building knowledge agents", audience: "for the spotter" },
-  { tail: "TRATEGY", word: "Strategy", gloss: "a decision framework grounded in verified information", audience: "for the operator" },
-  { tail: "YMPOSIUM", word: "Symposium", gloss: "a gathering place for solvers, spotters, spectators", audience: "for the community" },
-  { tail: "TEM", word: "STEM", gloss: "a scientific instrument for navigating knowledge", audience: "for the researcher" },
-  { tail: "TORY", word: "Story", gloss: "a narrative that unfolds as you zoom deeper", audience: "for the spectator" },
-];
-
-const LETTERS = "ASCERTAINTY".split("");
-const CERTAIN_RANGE: [number, number] = [2, 8]; // indices for C, E, R, T, A, I, N
-const S_INDEX = 1; // index of the contextual S
 
 export function ASCertaintyOverlay({ onDismiss }: { onDismiss: () => void }) {
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
