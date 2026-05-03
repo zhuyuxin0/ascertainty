@@ -223,9 +223,11 @@ export function HUD({ stats }: { stats: LiveStats }) {
         className="absolute bottom-7 left-7 pointer-events-auto font-mono text-[9px] uppercase tracking-[0.22em] text-ink/46 leading-[1.7]"
         {...tipPair("gesture hints", "Mouse + keyboard guide. Press ? for the full keymap.", [["?", "open help overlay"]])}
       >
-        <Hint k="drag" v="rotate" />
-        <Hint k="⌘ / ctrl + drag" v="pan" />
+        {/* 2D cartographic plate: drag pans, scroll zooms. No rotate — the
+            v2 Three.js orbit camera was retired in v3-light. */}
+        <Hint k="drag" v="pan" />
         <Hint k="scroll" v="zoom" />
+        <Hint k="minimap" v="snap pan" />
         <button type="button" onClick={() => setHelp(true)} className="cursor-pointer hover:text-ink/94 transition-colors flex items-baseline gap-2">
           <span className="text-ink/66">? help</span>
           <span className="text-ink/22">·</span>

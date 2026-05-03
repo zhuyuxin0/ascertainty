@@ -20,8 +20,6 @@
  * we can swap the atlas in later without changing call sites.
  */
 
-import { providerColorRGB } from "@/lib/atlas/types";
-
 export type MinionRecipe = {
   bodyIdx: number;
   paletteIdx: number;
@@ -134,4 +132,3 @@ export function recipeForMinion(seed: string, role: number): MinionRecipe {
 }
 
 // Re-export for convenience in card components
-export { providerColorRGB };

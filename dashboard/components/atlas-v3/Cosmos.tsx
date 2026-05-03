@@ -1,21 +1,27 @@
 "use client";
 /* Cosmos — the cartographic SVG canvas of the v3 atlas.
  *
- * One <svg viewBox="0 0 1600 900"> covering the full field. Renders:
+ * One <svg viewBox> covering the full field. The viewBox is computed
+ * dynamically from `scale` + `viewport` in the Zustand store, so:
+ *   • Scroll the cosmos → state.scale changes → viewBox shrinks → zoom in
+ *   • Drag the cosmos → state.viewport changes → viewBox origin shifts → pan
+ *   • Drag the minimap viewport rect → same state.viewport → pans cosmos
+ *   • Drag the scale chip → same state.scale → zooms cosmos
+ *
+ * Click handlers on regions / personas / sub-domains check
+ * `event.target === event.currentTarget` to avoid eating the drag.
+ *
+ * Renders:
  *   • Region wash gradients (radial fills behind each cluster)
  *   • Confidence arcs between regions (decorative, hand-tuned)
  *   • Confidence badges on the arcs (94% / 52% / 71% / 21%)
  *   • Three live regions: AI Models · Math Proofs · Prediction Markets
- *   • Three placeholder regions: DeFi Security · Scientific Claims · Engineering
- *   • Three persona dots wandering the field: Andy · Carl · Bea
- *   • A semi-opaque cream overlay when band ≠ cosmos (lifts the band-view
- *     on top of the cosmos backdrop without fully hiding it)
- *
- * Counts in region labels ("50 MODELS · LIVE") are wired to live data
- * from /atlas/models, /atlas/markets, /bounties via props.
- *
- * SVG geometry is the canonical layout from
- * design_handoff_atlas_v3/atlas-v3-light-interactive.html. */
+ *   • Three placeholder regions
+ *   • Three persona dots: Andy · Carl · Bea
+ *   • A semi-opaque cream overlay when band ≠ cosmos
+ */
+
+import { useRef, useState } from "react";
 
 import { useAtlasV3 } from "@/lib/atlas-v3/state";
 import { PERSONAS, PLACEHOLDERS, REGIONS, type RegionDef } from "@/lib/atlas-v3/regions";
@@ -23,6 +29,12 @@ import { PERSONAS, PLACEHOLDERS, REGIONS, type RegionDef } from "@/lib/atlas-v3/
 import { DomainView } from "./bands/DomainView";
 import { EntityView } from "./bands/EntityView";
 import { DetailView } from "./bands/DetailView";
+
+/** Stage-space dimensions. Matches the canonical 1600×900 from the
+ *  design handoff. The actual rendered viewBox is derived from these
+ *  + (scale, viewport). */
+const STAGE_W = 1600;
+const STAGE_H = 900;
 
 export function Cosmos({
   modelCount,
@@ -49,11 +61,17 @@ export function Cosmos({
     "prediction-markets": marketCount,
   };
 
+  const togglePanel = useAtlasV3((s) => s.togglePanel);
+
   const onRegionClick = (r: RegionDef) => {
     setRegion(r.id);
     setBand("domain");
     setObserve({ kind: "region", id: r.id });
     pushToast({ glyph: "→", label: "entered domain", em: ` ${r.name}` });
+    // The math-proofs region drops the user straight into the bounty
+    // board on the right — domain band still shows visually, but the
+    // panel surfaces the actual list since proofs are a list of items.
+    if (r.id === "math-proofs") togglePanel("bounties");
   };
 
   const onPersonaClick = (slug: string, name: string) => {
@@ -67,13 +85,84 @@ export function Cosmos({
     onMouseLeave: () => hideTooltip(),
   });
 
+  // ── Camera state: scale (zoom) + viewport (pan) drive a dynamic viewBox ──
+  const scale = useAtlasV3((s) => s.scale);
+  const viewport = useAtlasV3((s) => s.viewport);
+  const setScale = useAtlasV3((s) => s.setScale);
+  const setViewport = useAtlasV3((s) => s.setViewport);
+
+  // Effective rendered slice of stage (smaller = zoomed in)
+  const effW = STAGE_W / scale;
+  const effH = STAGE_H / scale;
+  // Pannable range (positive when zoomed in past 1x)
+  const panRangeX = Math.max(0, STAGE_W - effW);
+  const panRangeY = Math.max(0, STAGE_H - effH);
+  const vbX = panRangeX * viewport.x;
+  const vbY = panRangeY * viewport.y;
+
+  // Drag-to-pan: only fires when mousedown lands on the SVG itself
+  // (not a region/persona child). Click events still fire on children
+  // because we don't preventDefault on the parent.
+  const dragRef = useRef<{ startX: number; startY: number; vx: number; vy: number; w: number; h: number } | null>(null);
+  const [dragging, setDragging] = useState(false);
+
+  const onSvgMouseDown = (e: React.MouseEvent<SVGSVGElement>) => {
+    // Only initiate drag on bare canvas, not on a region/persona node
+    if (e.target !== e.currentTarget) return;
+    if (panRangeX === 0 && panRangeY === 0) return; // nothing to pan if not zoomed in
+    const rect = e.currentTarget.getBoundingClientRect();
+    dragRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      vx: viewport.x,
+      vy: viewport.y,
+      w: rect.width,
+      h: rect.height,
+    };
+    setDragging(true);
+    const onMove = (ev: MouseEvent) => {
+      if (!dragRef.current) return;
+      const dxPx = ev.clientX - dragRef.current.startX;
+      const dyPx = ev.clientY - dragRef.current.startY;
+      // Convert pixel delta to viewport delta (inverted — drag right pans the cosmos right)
+      const dvx = -dxPx / dragRef.current.w;
+      const dvy = -dyPx / dragRef.current.h;
+      setViewport({
+        x: Math.max(0, Math.min(1, dragRef.current.vx + dvx)),
+        y: Math.max(0, Math.min(1, dragRef.current.vy + dvy)),
+      });
+    };
+    const onUp = () => {
+      dragRef.current = null;
+      setDragging(false);
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
+  // Scroll-to-zoom. Anchors zoom near the cursor for natural feel.
+  const onWheel = (e: React.WheelEvent<SVGSVGElement>) => {
+    e.preventDefault?.();
+    const factor = Math.exp(-e.deltaY * 0.0015);
+    const next = Math.max(0.4, Math.min(3.6, scale * factor));
+    setScale(next);
+  };
+
   return (
     <div className="absolute inset-0 z-[2]">
       <svg
-        viewBox="0 0 1600 900"
+        viewBox={`${vbX} ${vbY} ${effW} ${effH}`}
         preserveAspectRatio="xMidYMid slice"
         className="w-full h-full"
-        style={{ display: "block" }}
+        style={{
+          display: "block",
+          cursor: dragging ? "grabbing" : panRangeX > 0 || panRangeY > 0 ? "grab" : "default",
+          transition: dragging ? "none" : "all 200ms cubic-bezier(0.22, 1, 0.36, 1)",
+        }}
+        onMouseDown={onSvgMouseDown}
+        onWheel={onWheel}
       >
         <defs>
           <pattern id="hatch-ash" patternUnits="userSpaceOnUse" width="8" height="8" patternTransform="rotate(45)">
