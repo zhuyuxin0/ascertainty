@@ -25,7 +25,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useAtlasV3, type Band } from "@/lib/atlas-v3/state";
 import { REGIONS } from "@/lib/atlas-v3/regions";
@@ -210,7 +210,7 @@ export function HUD({ stats }: { stats: LiveStats }) {
       <NowObserving stats={stats} observe={observe} />
 
       {/* ── Minimap (right rail, below now-observing) ── */}
-      <Minimap viewport={viewport} setViewport={setViewport} tipPair={tipPair} />
+      <Minimap viewport={viewport} scale={scale} setViewport={setViewport} tipPair={tipPair} />
 
       {/* ── Scale chip (right rail, below minimap) ── */}
       <ScaleChip scale={scale} setScale={setScale} tipPair={tipPair} />
@@ -364,37 +364,111 @@ function NowObserving({ stats, observe }: { stats: LiveStats; observe: ReturnTyp
   );
 }
 
+/* Minimap planet positions match the cosmos region/placeholder positions
+ * scaled into the 168×100 minimap. (Cosmos coords are 0-1600 × 0-900;
+ * we map to 0-100% × 0-100% of the minimap.) */
+const MINIMAP_PLANETS: Array<{ id: string; color: string; cx: number; cy: number; clickable: boolean; label: string }> = [
+  { id: "ai-models",          color: "#7B5BA8",            cx: 1100 / 1600, cy: 280 / 900, clickable: true,  label: "AI Models" },
+  { id: "math-proofs",        color: "#2A7A8F",            cx: 540  / 1600, cy: 600 / 900, clickable: true,  label: "Math Proofs" },
+  { id: "prediction-markets", color: "#B85A42",            cx: 1280 / 1600, cy: 720 / 900, clickable: true,  label: "Prediction Markets" },
+  { id: "defi-security",      color: "rgba(10,21,37,0.22)", cx: 220 / 1600, cy: 230 / 900, clickable: false, label: "DeFi Security" },
+  { id: "scientific-claims",  color: "rgba(10,21,37,0.22)", cx: 820 / 1600, cy: 90  / 900, clickable: false, label: "Scientific Claims" },
+  { id: "engineering",        color: "rgba(10,21,37,0.22)", cx: 180 / 1600, cy: 730 / 900, clickable: false, label: "Engineering" },
+];
+
+/** Recenter the cosmos on a stage-space point (cx, cy in 0-1 normalized).
+ *  Computes the viewport that puts that point at the center of the
+ *  current viewBox slice. Capped so the viewport never tries to pan
+ *  beyond the canvas edges. */
+function recenterOn(cx: number, cy: number, scale: number): { x: number; y: number } {
+  const fracVisible = 1 / scale;
+  const halfVisible = fracVisible / 2;
+  // Viewport.x in 0..1 means the viewBox left edge is at panRange * x of stage.
+  // To center on cx, we want viewBox-left + halfVisible = cx → vp = (cx - half) / (1 - frac)
+  const denom = 1 - fracVisible;
+  if (denom <= 0) return { x: 0, y: 0 }; // fully visible, no pan possible
+  return {
+    x: Math.max(0, Math.min(1, (cx - halfVisible) / denom)),
+    y: Math.max(0, Math.min(1, (cy - halfVisible) / denom)),
+  };
+}
+
 function Minimap({
   viewport,
+  scale,
   setViewport,
   tipPair,
 }: {
   viewport: { x: number; y: number };
+  scale: number;
   setViewport: (v: { x: number; y: number }) => void;
   tipPair: (label: string, body: string, keys?: Array<[string, string]>) => Record<string, unknown>;
 }) {
+  const pushToast = useAtlasV3((s) => s.pushToast);
+  const setRegion = useAtlasV3((s) => s.setRegion);
+  const setBand = useAtlasV3((s) => s.setBand);
   const [grabbing, setGrabbing] = useState(false);
+  const dragMoved = useRef(false);
+
+  // The viewport rect's size on the minimap = 1/scale of the canvas (the
+  // fraction of the cosmos currently visible). At scale 1.0 it fills the
+  // map; at scale 2.0 it's 50% × 50%. Clamped so the rect never exceeds
+  // the minimap.
+  const fracVisible = Math.min(1, 1 / scale);
+  const rectPctW = fracVisible * 100;
+  const rectPctH = fracVisible * 100;
+  // Viewport.x in 0..1 maps to the rect's left in 0..(100 - rectPctW)
+  const rectPctLeft = viewport.x * (100 - rectPctW);
+  const rectPctTop = viewport.y * (100 - rectPctH);
 
   const onDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if ((e.target as HTMLElement).dataset?.planet) return; // let planet handle it
     const map = e.currentTarget;
     const rect = map.getBoundingClientRect();
     const start = { x: e.clientX, y: e.clientY, vx: viewport.x, vy: viewport.y };
     setGrabbing(true);
+    dragMoved.current = false;
     const onMove = (ev: MouseEvent) => {
       const dx = (ev.clientX - start.x) / rect.width;
       const dy = (ev.clientY - start.y) / rect.height;
+      if (Math.abs(dx) > 0.005 || Math.abs(dy) > 0.005) dragMoved.current = true;
+      // Drag distance translates to viewport delta — rect can move 0..(1-frac)
+      // of the minimap, but we let viewport.x stay in 0..1 (cosmos handles cap)
       setViewport({
-        x: Math.max(0, Math.min(0.6, start.vx + dx)),
-        y: Math.max(0, Math.min(0.45, start.vy + dy)),
+        x: Math.max(0, Math.min(1, start.vx + dx)),
+        y: Math.max(0, Math.min(1, start.vy + dy)),
       });
     };
-    const onUp = () => {
+    const onUp = (ev: MouseEvent) => {
       setGrabbing(false);
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
+      // If user didn't drag, treat it as a click-to-recenter on that
+      // map coordinate. Translates the click position into stage-space
+      // and recenters there.
+      if (!dragMoved.current) {
+        const px = (ev.clientX - rect.left) / rect.width;
+        const py = (ev.clientY - rect.top) / rect.height;
+        setViewport(recenterOn(px, py, scale));
+      }
     };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
+  };
+
+  const onPlanetClick = (planet: typeof MINIMAP_PLANETS[number]) => {
+    if (!planet.clickable) {
+      pushToast({ glyph: "✕", label: "placeholder · not navigable" });
+      return;
+    }
+    setViewport(recenterOn(planet.cx, planet.cy, scale));
+    setRegion(planet.id as "ai-models" | "math-proofs" | "prediction-markets");
+    if (scale < 1.2) {
+      // Auto-step into domain for the recentered region per "tap planet
+      // to recenter" — visiting that planet is the natural drill-in.
+      setBand("domain");
+    }
+    pushToast({ glyph: "⊙", label: "recentered on", em: ` ${planet.label}` });
   };
 
   return (
@@ -402,10 +476,10 @@ function Minimap({
       className="absolute top-[140px] right-7 pointer-events-auto border border-ink/12 backdrop-blur"
       style={{ background: "rgba(250, 246, 232, 0.92)" }}
     >
-      <div className="flex items-baseline justify-between px-3 py-1.5 border-b border-ink/12">
+      <div className="flex items-baseline justify-between px-3 py-1.5 border-b border-ink/12 gap-3">
         <span className="font-mono text-[9px] uppercase tracking-[0.25em] text-ink/46">minimap</span>
         <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-ink/46 tabular-nums">
-          x {(viewport.x).toFixed(2)} · y {(viewport.y - 0.3).toFixed(2)}
+          x {viewport.x.toFixed(2)} · y {viewport.y.toFixed(2)}
         </span>
       </div>
       <div
@@ -417,38 +491,49 @@ function Minimap({
             linear-gradient(90deg, rgba(10,21,37,0.06) 1px, transparent 1px)
           `,
           backgroundSize: "10px 10px",
-          cursor: grabbing ? "grabbing" : "grab",
+          cursor: grabbing ? "grabbing" : "crosshair",
         }}
-        {...tipPair("minimap", "Drag the viewport rect to pan the cosmos. Tap a planet to recenter.", [["drag", "pan cosmos · cursor: grabbing"]])}
+        {...tipPair("minimap", "Drag to pan · click to recenter · tap a planet to fly there.", [
+          ["drag", "pan cosmos"],
+          ["click empty", "recenter on point"],
+          ["click planet", "fly to that region"],
+        ])}
       >
-        <Planet color="var(--persimmon)" left="62%" top="25%" />
-        <Planet color="var(--peacock)" left="30%" top="60%" />
-        <Planet color="#B85A42" left="75%" top="72%" />
-        <Planet color="rgba(10,21,37,0.18)" left="12%" top="22%" />
-        <Planet color="rgba(10,21,37,0.18)" left="48%" top="8%" />
-        <Planet color="rgba(10,21,37,0.18)" left="10%" top="75%" />
+        {MINIMAP_PLANETS.map((p) => (
+          <button
+            key={p.id}
+            type="button"
+            data-planet={p.id}
+            onClick={(e) => {
+              e.stopPropagation();
+              onPlanetClick(p);
+            }}
+            title={p.label + (p.clickable ? "" : " · placeholder")}
+            className="absolute h-2 w-2 rounded-full pointer-events-auto"
+            style={{
+              left: `${p.cx * 100}%`,
+              top: `${p.cy * 100}%`,
+              background: p.color,
+              transform: "translate(-50%, -50%)",
+              cursor: p.clickable ? "pointer" : "not-allowed",
+              boxShadow: p.clickable ? "0 0 0 2px rgba(250,246,232,0.7)" : undefined,
+            }}
+          />
+        ))}
         <div
           className="absolute pointer-events-none"
           style={{
-            left: `${viewport.x * 100}%`,
-            top: `${viewport.y * 100}%`,
-            width: "40%",
-            height: "55%",
+            left: `${rectPctLeft}%`,
+            top: `${rectPctTop}%`,
+            width: `${rectPctW}%`,
+            height: `${rectPctH}%`,
             border: "1px solid var(--peacock)",
             background: "rgba(31,143,168,0.06)",
+            transition: grabbing ? "none" : "all 200ms cubic-bezier(0.22, 1, 0.36, 1)",
           }}
         />
       </div>
     </div>
-  );
-}
-
-function Planet({ color, left, top }: { color: string; left: string; top: string }) {
-  return (
-    <span
-      className="absolute h-1.5 w-1.5 rounded-full"
-      style={{ left, top, background: color, transform: "translate(-50%, -50%)" }}
-    />
   );
 }
 
